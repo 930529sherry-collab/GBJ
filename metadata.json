@@ -1,0 +1,7 @@
+{
+  "name": "乾不揪 群組用 沒資料庫版",
+  "description": "乾不揪 - 你的終極酒吧探險夥伴。輕鬆解決找酒吧、揪朋友、訂位的煩惱。今晚，乾不揪？",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
