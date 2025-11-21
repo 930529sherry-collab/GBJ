@@ -155,7 +155,8 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
         if (mock) return mock.profile;
 
         // Graceful fallback for permission errors (e.g. during auth transitions or rules issues)
-        if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
+        const errorMsg = error.message || String(error);
+        if (error.code === 'permission-denied' || errorMsg.includes('Missing or insufficient permissions') || errorMsg.includes('permission-denied')) {
              console.warn("getUserProfile: Permission denied, returning basic profile.");
              return {
                 id: uid,
@@ -372,7 +373,8 @@ export const getStores = async (): Promise<Store[]> => {
         });
     } catch (e: any) {
         // Handle missing permissions gracefully by using mock data
-        if (e.code === 'permission-denied' || e.message?.includes('Missing or insufficient permissions')) {
+        const errorMsg = e.message || String(e);
+        if (e.code === 'permission-denied' || errorMsg.includes('Missing or insufficient permissions') || errorMsg.includes('permission-denied')) {
             console.warn("getStores: Permission denied (using mock data).");
         } else {
             console.error("getStores failed:", e);
@@ -528,7 +530,7 @@ export const userApi = {
 
         try {
             const result = await callFunction<any, { success: boolean }>(
-                'respondFriendRequest', 
+                'respondfriendrequest', 
                 { requesterId: String(requesterId), requestId: String(requestId), accept }
             );
 
@@ -633,7 +635,8 @@ export const subscribeToFeed = (currentUserId: string, callback: (items: FeedIte
         callback(items);
     }, (error) => {
         // Gracefully handle permission errors to prevent app crash
-        if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
+        const errorMsg = error.message || String(error);
+        if (error.code === 'permission-denied' || errorMsg.includes('Missing or insufficient permissions') || errorMsg.includes('permission-denied')) {
              console.warn("Feed subscription permission denied. Using empty feed.");
              callback([]); // Return empty list to stop loading state
         } else {

@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
@@ -89,7 +90,8 @@ const ChatRoomPage: React.FC = () => {
             } as Message));
             setMessages(msgs);
         }, (error) => {
-            if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
+            const errorMsg = error.message || String(error);
+            if (error.code === 'permission-denied' || errorMsg.includes('Missing or insufficient permissions') || errorMsg.includes('permission-denied')) {
                 console.warn("Chat listener permission denied.");
                 // Stop loading if it was the initial load
                 setLoading(false); 
