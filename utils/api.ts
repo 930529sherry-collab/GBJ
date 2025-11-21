@@ -528,7 +528,7 @@ export const userApi = {
 
         try {
             const result = await callFunction<any, { success: boolean }>(
-                'respondfriendrequest', 
+                'respondFriendRequest', 
                 { requesterId: String(requesterId), requestId: String(requestId), accept }
             );
 
