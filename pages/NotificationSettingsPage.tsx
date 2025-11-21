@@ -14,7 +14,7 @@ interface NotificationSettings {
 const DEFAULT_SETTINGS: NotificationSettings = {
   friendActivity: true,
   newDeals: true,
-  missionReminders: false,
+  missionReminders: true, // Changed to true
   reservationUpdates: true,
   appAnnouncements: true,
 };

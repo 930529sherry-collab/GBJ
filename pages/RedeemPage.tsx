@@ -1,10 +1,48 @@
 
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_REDEEM_ITEMS, MOCK_USER_PROFILE } from '../constants';
-import { RedeemItem, UserProfile } from '../types';
-import { BackIcon, CoinIcon } from '../components/icons/ActionIcons';
+import { MOCK_REDEEM_ITEMS, MOCK_USER_PROFILE, MOCK_COUPONS, formatDate, addDays } from '../constants';
+import { RedeemItem, UserProfile, Coupon, Notification } from '../types';
+import { BackIcon, CoinIcon, XIcon } from '../components/icons/ActionIcons';
+import { useGuestGuard } from '../context/GuestGuardContext';
+
+const InsufficientPointsModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    missingPoints: number;
+}> = ({ isOpen, onClose, missingPoints }) => {
+    const navigate = useNavigate();
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex justify-center items-center p-4 backdrop-blur-md animate-fade-in">
+            <div className="bg-brand-secondary rounded-2xl p-6 w-full max-w-sm border-2 border-brand-accent/30 shadow-2xl shadow-brand-accent/10 text-center">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-red-200">
+                    <CoinIcon className="w-8 h-8 text-red-500" />
+                </div>
+                <h2 className="text-2xl font-bold text-brand-accent mb-2">積分不足！</h2>
+                <p className="text-brand-muted mb-6">
+                    您目前的酒幣不足以兌換此商品。<br />
+                    還差 <span className="font-bold text-red-500 text-lg">{missingPoints}</span> 酒幣。
+                </p>
+                <div className="flex gap-3">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 bg-brand-primary border-2 border-brand-accent text-brand-light py-2 px-4 rounded-lg hover:bg-brand-accent/10 transition-colors font-semibold"
+                    >
+                        知道了
+                    </button>
+                    <button
+                        onClick={() => { onClose(); navigate('/missions'); }}
+                        className="flex-1 bg-brand-accent text-brand-primary font-bold py-2 px-4 rounded-lg hover:bg-opacity-80 transition-colors"
+                    >
+                        去賺酒幣
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const RedeemModal: React.FC<{
     item: RedeemItem | null;
@@ -32,7 +70,7 @@ const RedeemModal: React.FC<{
     if (!isOpen || !item) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-50 flex justify-center items-center p-4 backdrop-blur-md animate-fade-in">
             <div className="bg-brand-secondary rounded-2xl p-6 w-full max-w-sm border-2 border-brand-accent/30 shadow-2xl shadow-brand-accent/10">
                 {step === 'confirm' && (
                     <>
@@ -66,7 +104,7 @@ const RedeemModal: React.FC<{
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <h2 className="text-2xl font-bold text-brand-accent">兌換成功！</h2>
-                        <p className="text-brand-muted mt-2">獎勵已發送至您的帳戶。</p>
+                        <p className="text-brand-muted mt-2">優惠券已匯入您的帳戶。</p>
                     </div>
                 )}
             </div>
@@ -81,16 +119,38 @@ const RedeemPage: React.FC = () => {
     const [redeemedIds, setRedeemedIds] = useState<number[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedItem, setSelectedItem] = useState<RedeemItem | null>(null);
+    
+    // Insufficient Points Modal State
+    const [isInsufficientModalOpen, setIsInsufficientModalOpen] = useState(false);
+    const [missingPoints, setMissingPoints] = useState(0);
+
+    const { checkGuest } = useGuestGuard();
 
     useEffect(() => {
         const savedProfile = localStorage.getItem('userProfile');
         setProfile(savedProfile ? JSON.parse(savedProfile) : MOCK_USER_PROFILE);
     }, []);
 
+    const sortedItems = useMemo(() => {
+        return [...MOCK_REDEEM_ITEMS].sort((a, b) => a.cost - b.cost);
+    }, []);
+
     const handleOpenModal = (item: RedeemItem) => {
-        if (!profile || profile.points < item.cost || redeemedIds.includes(item.id)) return;
-        setSelectedItem(item);
-        setIsModalOpen(true);
+        if (!profile) return;
+
+        checkGuest(() => {
+            // Affordability Check
+            if (profile.points < item.cost) {
+                setMissingPoints(item.cost - profile.points);
+                setIsInsufficientModalOpen(true);
+                return;
+            }
+            // Already Redeemed Check
+            if (redeemedIds.includes(item.id)) return;
+
+            setSelectedItem(item);
+            setIsModalOpen(true);
+        });
     };
 
     const handleCloseModal = () => {
@@ -102,15 +162,56 @@ const RedeemPage: React.FC = () => {
         const item = MOCK_REDEEM_ITEMS.find(i => i.id === itemId);
         if (!item || !profile || profile.points < item.cost) return;
 
-        const updatedProfile = { ...profile, points: profile.points - item.cost };
+        const newNotification: Notification = {
+            id: `redeem-${Date.now()}`,
+            type: '兌換成功',
+            message: `成功兌換「${item.title}」，已扣除 ${item.cost} 酒幣。`,
+            timestamp: new Date(),
+            read: false,
+        };
+
+        const updatedNotifications = [newNotification, ...(profile.notifications || [])];
+        const updatedProfile = { 
+            ...profile, 
+            points: profile.points - item.cost,
+            notifications: updatedNotifications
+        };
+
         setProfile(updatedProfile);
         localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+        
         setRedeemedIds(prev => [...prev, item.id]);
+
+        const storeNameMatch = item.description.match(/「(.*?)」/);
+        const storeName = storeNameMatch ? storeNameMatch[1] : '乾不揪獎勵';
+
+        const newCoupon: Coupon = {
+            id: Date.now(),
+            storeName: storeName,
+            title: item.title,
+            description: item.description,
+            expiry: formatDate(addDays(new Date(), 30)),
+            status: 'valid'
+        };
+
+        const existingCouponsStr = localStorage.getItem('userCoupons');
+        let currentCoupons: Coupon[] = [];
+        
+        if (existingCouponsStr) {
+            currentCoupons = JSON.parse(existingCouponsStr);
+        } else {
+            currentCoupons = [...MOCK_COUPONS];
+        }
+
+        const updatedCoupons = [newCoupon, ...currentCoupons];
+        localStorage.setItem('userCoupons', JSON.stringify(updatedCoupons));
     };
 
     if (!profile) {
         return <div className="text-center p-10 text-brand-accent">讀取中...</div>;
     }
+    
+    const isGuest = profile.id === 0 || profile.isGuest;
 
     return (
         <>
@@ -134,10 +235,10 @@ const RedeemPage: React.FC = () => {
                 {/* Redeemable Items */}
                 <div className="space-y-4">
                     <h3 className="text-xl font-bold text-brand-light">可兌換獎勵</h3>
-                    {MOCK_REDEEM_ITEMS.map(item => {
-                        const canAfford = profile.points >= item.cost;
+                    {sortedItems.map(item => {
                         const isRedeemed = redeemedIds.includes(item.id);
-
+                        const canAfford = profile.points >= item.cost;
+                        
                         return (
                             <div key={item.id} className="bg-brand-secondary p-4 rounded-lg flex items-center justify-between gap-4 border-2 border-brand-accent/20">
                                 <div className="flex-grow">
@@ -145,19 +246,19 @@ const RedeemPage: React.FC = () => {
                                     <p className="text-sm text-brand-muted mt-1">{item.description}</p>
                                     <div className="flex items-center gap-1 mt-2">
                                         <CoinIcon className="w-4 h-4 text-yellow-500" />
-                                        <span className="text-sm font-semibold text-brand-accent">{item.cost} 酒幣</span>
+                                        <span className={`text-sm font-semibold ${!isGuest && !canAfford ? 'text-red-500' : 'text-brand-accent'}`}>
+                                            {item.cost} 酒幣
+                                        </span>
                                     </div>
                                 </div>
                                 <div className="flex-shrink-0">
                                     <button
                                         onClick={() => handleOpenModal(item)}
-                                        disabled={!canAfford || isRedeemed}
+                                        disabled={isRedeemed}
                                         className={`w-24 text-sm font-bold px-4 py-2 rounded-lg transition-colors ${
                                             isRedeemed 
                                             ? 'bg-brand-primary text-brand-muted cursor-not-allowed'
-                                            : canAfford 
-                                            ? 'bg-brand-accent text-brand-primary hover:bg-opacity-80' 
-                                            : 'bg-brand-muted/20 text-brand-muted cursor-not-allowed'
+                                            : 'bg-brand-accent text-brand-primary hover:bg-opacity-80' 
                                         }`}
                                     >
                                         {isRedeemed ? '已兌換' : '兌換'}
@@ -173,6 +274,11 @@ const RedeemPage: React.FC = () => {
                 isOpen={isModalOpen}
                 onClose={handleCloseModal}
                 onConfirm={handleConfirmRedemption}
+            />
+            <InsufficientPointsModal 
+                isOpen={isInsufficientModalOpen}
+                onClose={() => setIsInsufficientModalOpen(false)}
+                missingPoints={missingPoints}
             />
         </>
     );

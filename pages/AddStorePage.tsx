@@ -1,12 +1,12 @@
 
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleGenAI, Type } from "@google/genai";
-import { Store } from '../types';
+import { Store, UserProfile } from '../types';
 import { BackIcon } from '../components/icons/ActionIcons';
+import { useGuestGuard } from '../context/GuestGuardContext';
+import { createStore } from '../utils/api'; // Import createStore
 
-// Bounding box for greater Taiwan area for mapping lat/lng to percentage
 const TAIWAN_BOUNDS = {
     latMin: 21.8,
     latMax: 25.4,
@@ -15,11 +15,9 @@ const TAIWAN_BOUNDS = {
 };
 
 const mapLatLngToPosition = (lat: number, lng: number) => {
-    // Clamp values to bounds to prevent positions > 100% or < 0%
     const clampedLat = Math.max(TAIWAN_BOUNDS.latMin, Math.min(lat, TAIWAN_BOUNDS.latMax));
     const clampedLng = Math.max(TAIWAN_BOUNDS.lngMin, Math.min(lng, TAIWAN_BOUNDS.lngMax));
 
-    // Invert latitude mapping because screen `top` increases downwards
     const top = 100 - ((clampedLat - TAIWAN_BOUNDS.latMin) / (TAIWAN_BOUNDS.latMax - TAIWAN_BOUNDS.latMin)) * 100;
     const left = ((clampedLng - TAIWAN_BOUNDS.lngMin) / (TAIWAN_BOUNDS.lngMax - TAIWAN_BOUNDS.lngMin)) * 100;
 
@@ -41,83 +39,88 @@ const AddStorePage: React.FC = () => {
     const [imageUrl, setImageUrl] = useState('');
     const [status, setStatus] = useState<'idle' | 'validating' | 'saving'>('idle');
     const [error, setError] = useState('');
+    const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+    const { checkGuest } = useGuestGuard();
+
+    useEffect(() => {
+        const profile = localStorage.getItem('userProfile');
+        if (profile) setCurrentUser(JSON.parse(profile));
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!name.trim() || !type.trim() || !address.trim()) {
-            setError('店名、類型和地址為必填欄位。');
-            return;
-        }
-        setError('');
-        setStatus('validating');
-
-        try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: `Is "${address}" a real, valid address in Taiwan? Please respond in JSON format.`,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            isValid: { type: Type.BOOLEAN },
-                            latitude: { type: Type.NUMBER },
-                            longitude: { type: Type.NUMBER },
-                        },
-                        required: ['isValid'],
-                    },
-                },
-            });
-            
-            const result = JSON.parse(response.text);
-
-            if (!result.isValid) {
-                setError('請輸入一個真實有效的台灣地址。Gemini AI 無法驗證此地址。');
-                setStatus('idle');
+        checkGuest(async () => {
+            if (!name.trim() || !type.trim() || !address.trim()) {
+                setError('店名、類型和地址為必填欄位。');
                 return;
             }
-            
-            setStatus('saving');
+            setError('');
+            setStatus('validating');
 
-            // Simulate saving delay
-            await new Promise(resolve => setTimeout(resolve, 500));
+            try {
+                const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: `Is "${address}" a real, valid address in Taiwan? Please respond in JSON format.`,
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.OBJECT,
+                            properties: {
+                                isValid: { type: Type.BOOLEAN },
+                                latitude: { type: Type.NUMBER },
+                                longitude: { type: Type.NUMBER },
+                            },
+                            required: ['isValid'],
+                        },
+                    },
+                });
+                
+                const result = JSON.parse(response.text);
 
-            const savedStoresString = localStorage.getItem('stores');
-            const existingStores: Store[] = savedStoresString ? JSON.parse(savedStoresString) : [];
-            const newId = existingStores.length > 0 ? Math.max(...existingStores.map(s => s.id)) + 1 : 1;
+                if (!result.isValid) {
+                    setError('請輸入一個真實有效的台灣地址。Gemini AI 無法驗證此地址。');
+                    setStatus('idle');
+                    return;
+                }
+                
+                setStatus('saving');
 
-            const newStore: Store = {
-                id: newId,
-                name: name.trim(),
-                type: type.trim(),
-                address: address.trim(),
-                phone: phone.trim(),
-                hours: hours.trim(),
-                priceRange: priceRange.trim(),
-                description: description.trim(),
-                imageUrl: imageUrl.trim() || `https://picsum.photos/400/300?random=${newId}`,
-                position: mapLatLngToPosition(result.latitude, result.longitude),
-                latlng: { lat: result.latitude, lng: result.longitude },
-                rating: 0,
-                availability: 'Available',
-                distance: '未知',
-                reviews: [],
-                menu: [],
-            };
+                // Generate a numeric ID for compatibility
+                const newId = Date.now();
 
-            const updatedStores = [...existingStores, newStore];
-            localStorage.setItem('stores', JSON.stringify(updatedStores));
+                const newStore: Store = {
+                    id: newId,
+                    name: name.trim(),
+                    type: type.trim(),
+                    address: address.trim(),
+                    phone: phone.trim(),
+                    hours: hours.trim(),
+                    priceRange: priceRange.trim(),
+                    description: description.trim(),
+                    imageUrl: imageUrl.trim() || `https://picsum.photos/400/300?random=${newId}`,
+                    position: mapLatLngToPosition(result.latitude, result.longitude),
+                    latlng: { lat: result.latitude, lng: result.longitude },
+                    rating: 0,
+                    availability: 'Available',
+                    distance: '未知',
+                    reviews: [],
+                    menu: [],
+                };
 
-            setStatus('idle');
-            navigate('/');
+                // Save to Firestore
+                await createStore(newStore);
 
-        } catch (err) {
-            console.error("Error validating address:", err);
-            setError('地址驗證失敗，請稍後再試。');
-            setStatus('idle');
-        }
+                setStatus('idle');
+                navigate('/');
+
+            } catch (err) {
+                console.error("Error adding store:", err);
+                setError('新增店家失敗，請稍後再試。');
+                setStatus('idle');
+            }
+        });
     };
     
     const getButtonText = () => {

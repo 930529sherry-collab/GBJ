@@ -1,10 +1,12 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MOCK_STORES, MOCK_ORDERS } from '../constants';
-import { Store, Order } from '../types';
-import { PlusIcon, ChevronDownIcon } from '../components/icons/ActionIcons';
+import { Store, Order, UserProfile } from '../types';
+import { PlusIcon, ChevronDownIcon, LocationMarkerIcon, StarIcon, ClockIcon } from '../components/icons/ActionIcons';
 import { useGeolocation } from '../context/GeolocationContext';
 import { getDistance } from '../utils/distance';
+import { useGuestGuard } from '../context/GuestGuardContext';
 
 const availabilityStyles = {
     Available: { color: 'bg-green-500', text: '有空位' },
@@ -25,7 +27,20 @@ const ReservationModal: React.FC<{
     useEffect(() => { if (isOpen) { setDate(today); setTime('19:00'); setPeople(2); setStep('form'); } }, [isOpen, today]);
     const handleConfirm = () => {
         if (!store) return;
-        const newOrder: Order = { id: `ORD${Date.now()}`, storeName: store.name, date, time, people, status: 'Confirmed' };
+        
+        const profileData = localStorage.getItem('userProfile');
+        const profile = profileData ? JSON.parse(profileData) : null;
+        const userId = profile ? profile.id : 0;
+
+        const newOrder: Order = { 
+            id: `ORD${Date.now()}`, 
+            userId,
+            storeName: store.name, 
+            date, 
+            time, 
+            people, 
+            status: 'Confirmed' 
+        };
         const existingOrdersString = localStorage.getItem('orders');
         const existingOrders: Order[] = existingOrdersString ? JSON.parse(existingOrdersString) : MOCK_ORDERS;
         const updatedOrders = [newOrder, ...existingOrders];
@@ -98,6 +113,25 @@ const StoreCard: React.FC<{ store: Store; onSelect: (store: Store) => void; onRe
     );
 };
 
+const SortButton: React.FC<{ 
+    label: string; 
+    active: boolean; 
+    onClick: () => void; 
+    icon?: React.ReactNode 
+}> = ({ label, active, onClick, icon }) => (
+    <button
+        onClick={onClick}
+        className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-bold transition-all whitespace-nowrap border ${
+            active
+                ? 'bg-brand-accent text-brand-primary border-brand-accent shadow-md shadow-brand-accent/20'
+                : 'bg-brand-primary text-brand-muted border-brand-accent/20 hover:border-brand-accent/50 hover:text-brand-light'
+        }`}
+    >
+        {icon && <span className="w-4 h-4">{icon}</span>}
+        {label}
+    </button>
+);
+
 const HomePage: React.FC = () => {
     const [stores, setStores] = useState<Store[]>([]);
     const [loading, setLoading] = useState(true);
@@ -106,29 +140,50 @@ const HomePage: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isStoreListOpen, setIsStoreListOpen] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
+    const [sortType, setSortType] = useState<'distance' | 'rating' | 'availability'>('distance');
     const ITEMS_PER_PAGE = 5;
+    const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
     
     const location = useLocation();
     const navigate = useNavigate();
     const { position: userPosition, error: userError } = useGeolocation();
+    const { checkGuest } = useGuestGuard();
+
+    useEffect(() => {
+        const profile = localStorage.getItem('userProfile');
+        if (profile) setCurrentUser(JSON.parse(profile));
+    }, []);
     
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm]);
+    }, [searchTerm, sortType]);
 
-    const filteredStores = useMemo(() => {
-        return stores.filter(store => {
-            const matchesSearch = store.name.toLowerCase().includes(searchTerm.toLowerCase());
-            return matchesSearch;
+    const sortedAndFilteredStores = useMemo(() => {
+        let filtered = stores.filter(store => 
+            store.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+        return filtered.sort((a, b) => {
+            if (sortType === 'rating') {
+                return b.rating - a.rating;
+            }
+            if (sortType === 'availability') {
+                const priority = { 'Available': 0, 'Busy': 1, 'Full': 2 };
+                return priority[a.availability] - priority[b.availability];
+            }
+            // Default distance sorting
+            const distA = parseFloat(a.distance) || 9999;
+            const distB = parseFloat(b.distance) || 9999;
+            return distA - distB;
         });
-    }, [stores, searchTerm]);
+    }, [stores, searchTerm, sortType]);
 
-    const totalPages = Math.ceil(filteredStores.length / ITEMS_PER_PAGE);
+    const totalPages = Math.ceil(sortedAndFilteredStores.length / ITEMS_PER_PAGE);
     const paginatedStores = useMemo(() => {
         const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
         const endIndex = startIndex + ITEMS_PER_PAGE;
-        return filteredStores.slice(startIndex, endIndex);
-    }, [filteredStores, currentPage]);
+        return sortedAndFilteredStores.slice(startIndex, endIndex);
+    }, [sortedAndFilteredStores, currentPage]);
 
     const handleNextPage = () => {
         setCurrentPage(prev => Math.min(prev + 1, totalPages));
@@ -157,7 +212,8 @@ const HomePage: React.FC = () => {
                 const storesWithDistance = taipeiStores.map(store => {
                     const distance = getDistance(userPosition.lat, userPosition.lng, store.latlng.lat, store.latlng.lng);
                     return { ...store, distance: `${distance.toFixed(1)} 公里` };
-                }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+                });
+                // Initial sort by distance is handled by default sortType 'distance' in useMemo
                 setStores(storesWithDistance);
             } else {
                  setStores(taipeiStores);
@@ -167,7 +223,12 @@ const HomePage: React.FC = () => {
         }, 500);
     }, [location, userPosition]);
 
-    const handleOpenModal = (store: Store) => { setStoreToReserve(store); setIsModalOpen(true); };
+    const handleOpenModal = (store: Store) => { 
+        checkGuest(() => {
+            setStoreToReserve(store); 
+            setIsModalOpen(true); 
+        });
+    };
     const handleCloseModal = () => { setIsModalOpen(false); setStoreToReserve(null); };
     
     const handleSelectStore = (store: Store) => {
@@ -189,7 +250,7 @@ const HomePage: React.FC = () => {
                 
                 <div className="flex-grow overflow-y-auto pr-2 space-y-6 pb-32">
                     <div>
-                        <div className="flex justify-between items-center mb-4">
+                        <div className="flex justify-between items-center mb-2">
                             <button onClick={() => setIsStoreListOpen(!isStoreListOpen)} className="flex items-center gap-2 p-2 rounded-lg hover:bg-brand-secondary transition-colors">
                                 <h3 className="text-lg font-bold text-brand-light">所有酒吧</h3>
                                 <ChevronDownIcon className={`w-6 h-6 text-brand-muted transition-transform duration-300 ${isStoreListOpen ? 'rotate-180' : ''}`} />
@@ -202,7 +263,31 @@ const HomePage: React.FC = () => {
                                 <span>新增酒吧</span>
                             </Link>
                         </div>
+
                         <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isStoreListOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                            
+                            {/* Sorting Buttons */}
+                            <div className="flex gap-2 overflow-x-auto pb-2 mb-2 no-scrollbar px-1">
+                                <SortButton 
+                                    label="距離最近" 
+                                    active={sortType === 'distance'} 
+                                    onClick={() => setSortType('distance')}
+                                    icon={<LocationMarkerIcon className="w-4 h-4" />}
+                                />
+                                <SortButton 
+                                    label="評價最高" 
+                                    active={sortType === 'rating'} 
+                                    onClick={() => setSortType('rating')}
+                                    icon={<StarIcon className="w-4 h-4" />}
+                                />
+                                <SortButton 
+                                    label="客滿狀態" 
+                                    active={sortType === 'availability'} 
+                                    onClick={() => setSortType('availability')}
+                                    icon={<ClockIcon className="w-4 h-4" />}
+                                />
+                            </div>
+
                             <div className="relative mb-4">
                                 <input type="text" placeholder="搜尋店家名稱..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-brand-secondary border-2 border-brand-accent/50 rounded-lg p-3 pl-10 text-brand-light focus:ring-brand-accent focus:border-brand-accent transition-colors" />
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><svg className="w-5 h-5 text-brand-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></div>

@@ -1,4 +1,6 @@
 
+
+
 export interface Review {
   id: number;
   author: string;
@@ -33,7 +35,7 @@ export interface Store {
 }
 
 export interface Friend {
-  id: number;
+  id: number | string;
   name: string;
   lastCheckIn: string;
   avatarUrl: string;
@@ -60,8 +62,8 @@ export interface Mission {
 }
 
 export interface UserProfile {
-  id: number;
-  name: string;
+  id: number | string;
+  name?: string;
   avatarUrl: string;
   level: number;
   xp: number;
@@ -71,20 +73,37 @@ export interface UserProfile {
   checkIns: number;
   email?: string;
   phone?: string;
-  friends: number[];
+  friends: (number | string)[];
   latlng: { lat: number; lng: number };
   friendCode?: string;
+  appId?: string;
+  displayName?: string;
+  displayName_lower?: string;
+  notifications?: Notification[];
+  hasReceivedWelcomeGift?: boolean;
+  isGuest?: boolean; // New flag to identify guest users
+  completedMissionIds?: number[]; // Track IDs of claimed missions permanently
+  hasUnreadChats?: boolean; // Flag to show red dot on chat icon
+  profileVisibility?: 'public' | 'friends' | 'private';
+}
+
+export interface Notification {
+    id?: string;
+    type: string;
+    message: string;
+    timestamp: any;
+    read: boolean;
 }
 
 export interface MockUser {
-    id: number;
+    id: number | string;
     email: string;
     password: string;
     profile: UserProfile;
 }
 
 export interface Comment {
-    id: number;
+    id: number | string;
     authorName: string;
     authorAvatarUrl: string;
     text: string;
@@ -93,8 +112,9 @@ export interface Comment {
 }
 
 export interface FeedItem {
-  id: number;
-  friendId: number;
+  id: number | string;
+  clientSideId?: string; // Unique ID generated on client to match local/cloud posts
+  friendId: number | string;
   friendName: string;
   friendAvatarUrl: string;
   type: 'check-in' | 'mission-complete' | 'new-friend';
@@ -106,10 +126,14 @@ export interface FeedItem {
   likes: number;
   isLiked: boolean;
   comments: Comment[];
+  likedBy?: (string | number)[];
+  authorId?: string | number; // Explicit author ID for ownership checks
+  visibility?: 'public' | 'friends' | 'private'; // New visibility field
 }
 
 export interface Order {
   id: string;
+  userId: string | number; // Owner ID
   storeName: string;
   date: string;
   time: string;
@@ -117,22 +141,12 @@ export interface Order {
   status: 'Confirmed' | 'Completed' | 'Cancelled';
 }
 
-export interface FriendProfile {
-    id: number;
-    name: string;
-    avatarUrl: string;
-    level: number;
-    xp: number;
-    xpToNextLevel: number;
-    points: number;
-    missionsCompleted: number;
-    checkIns: number;
+export interface FriendProfile extends UserProfile {
     recentActivity: FeedItem[];
-    friends: number[];
 }
 
 export interface FriendDetail {
-    id: number;
+    id: number | string;
     name: string;
     avatarUrl: string;
     level: number;
@@ -140,7 +154,7 @@ export interface FriendDetail {
 }
 
 export interface SearchableUser {
-    id: number;
+    id: number | string;
     name: string;
     avatarUrl: string;
     level: number;
@@ -165,6 +179,7 @@ export interface Coupon {
 
 export interface JournalEntry {
   id: number;
+  userId: string | number; // Owner ID
   storeId: number;
   storeName: string;
   drinkName: string;
@@ -172,4 +187,14 @@ export interface JournalEntry {
   notes: string;
   date: string; // YYYY-MM-DD format
   imageUrl?: string;
+}
+
+// New type for real-time friend requests from the subcollection
+export interface FriendRequest {
+    id: string; // This will be the document ID
+    senderUid: string;
+    senderName: string;
+    senderAvatarUrl: string;
+    status: 'pending' | 'accepted' | 'declined';
+    timestamp: any;
 }

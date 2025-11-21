@@ -1,13 +1,14 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import * as L from 'leaflet';
-import { MOCK_STORES } from '../constants';
 import { Store, UserProfile } from '../types';
 import { CrosshairsIcon, SparklesIcon } from '../components/icons/ActionIcons';
 import MapPlaceholder from '../components/MapPlaceholder';
 import { useGeolocation } from '../context/GeolocationContext';
 import { getDistance } from '../utils/distance';
 import { GoogleGenAI, Type } from "@google/genai";
+import { getStores } from '../utils/api'; // Import getStores
 
 interface AiRecommendation {
     storeName: string;
@@ -29,7 +30,6 @@ const AiRecCard: React.FC<{ recommendation: AiRecommendation; onSelect: (store: 
     );
 };
 
-// FIX: Add MapPin interface to correctly type map pins for MapPlaceholder, allowing both user location (string ID) and store locations (number ID).
 interface MapPin {
     id: number | string;
     latlng: { lat: number; lng: number };
@@ -38,7 +38,6 @@ interface MapPin {
     avatarUrl?: string;
     name?: string;
 }
-
 
 const MapPage: React.FC = () => {
     const [stores, setStores] = useState<Store[]>([]);
@@ -59,6 +58,36 @@ const MapPage: React.FC = () => {
         if (profile) setUserProfile(JSON.parse(profile));
     }, []);
 
+    useEffect(() => {
+        const fetchStores = async () => {
+            setLoading(true);
+            try {
+                // Fetch stores from Firestore
+                const allStores = await getStores();
+                
+                // Filter for Taipei stores (optional based on requirements, keeping existing logic)
+                const taipeiStores = allStores.filter(store => store.address.includes('台北市'));
+
+                if (userPosition) {
+                    const storesWithDistance = taipeiStores.map(store => {
+                        const distance = getDistance(userPosition.lat, userPosition.lng, store.latlng.lat, store.latlng.lng);
+                        return { ...store, distance: `${distance.toFixed(1)} 公里` };
+                    }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+                    setStores(storesWithDistance);
+                } else {
+                     setStores(taipeiStores);
+                }
+            } catch (error) {
+                console.error("Failed to load stores:", error);
+                setStores([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+        
+        fetchStores();
+    }, [location, userPosition]);
+
     const mapPins = useMemo(() => {
         const pins: MapPin[] = stores.map(s => ({
             id: s.id,
@@ -77,39 +106,8 @@ const MapPage: React.FC = () => {
         }
         return pins;
     }, [stores, userPosition, userProfile]);
-    
-    useEffect(() => {
-        setLoading(true);
-        
-        setTimeout(() => {
-            const savedStores = localStorage.getItem('stores');
-            let allStores: Store[];
-            if (savedStores) {
-                allStores = JSON.parse(savedStores);
-            } else {
-                allStores = MOCK_STORES;
-                localStorage.setItem('stores', JSON.stringify(MOCK_STORES));
-            }
-            
-            // Only show stores in Taipei City
-            const taipeiStores = allStores.filter(store => store.address.includes('台北市'));
-
-            if (userPosition) {
-                const storesWithDistance = taipeiStores.map(store => {
-                    const distance = getDistance(userPosition.lat, userPosition.lng, store.latlng.lat, store.latlng.lng);
-                    return { ...store, distance: `${distance.toFixed(1)} 公里` };
-                }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
-                setStores(storesWithDistance);
-            } else {
-                 setStores(taipeiStores);
-            }
-
-            setLoading(false);
-        }, 500);
-    }, [location, userPosition]);
 
     const handleNavigateToStore = (storeId: number | string) => {
-        // Delay navigation to prevent race condition with Leaflet event handling
         setTimeout(() => {
             navigate(`/store/${storeId}`);
         }, 0);
@@ -117,7 +115,6 @@ const MapPage: React.FC = () => {
 
     const handleRecenterMap = () => {
         if (userPosition && mapRef.current) {
-            // FIX: Correct Leaflet `setView` options. The `pan` property is invalid; animation options like `duration` should be at the top level of the options object.
             mapRef.current.setView([userPosition.lat, userPosition.lng], 15, {
                 animate: true,
                 duration: 1,
@@ -139,7 +136,6 @@ const MapPage: React.FC = () => {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
             const storeList = stores.map(s => `${s.name} (${s.type})`).join('; ');
             const prompt = `我現在的心情或需求是「${mood.trim()}」。從以下的台北酒吧清單中：[${storeList}]，請為我推薦 3 間最符合這個心情的酒吧。請為每一間酒吧提供一個簡短、有創意且吸引人的推薦理由。請用 JSON 格式回覆。`;
-
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
@@ -193,7 +189,6 @@ const MapPage: React.FC = () => {
                     無法取得您的位置：{userError}。距離計算可能不準確。
                 </div>
             )}
-            {/* Map Section */}
             <div className="relative w-full h-[50vh] rounded-2xl overflow-hidden border-2 border-brand-accent/30 shadow-2xl shadow-brand-accent/10">
                 <MapPlaceholder 
                     pins={mapPins}
@@ -212,7 +207,6 @@ const MapPage: React.FC = () => {
                     </button>
                 </div>
             </div>
-             {/* AI Recommendation Section */}
              <div className="bg-orange-200 dark:bg-orange-800/50 p-4 rounded-xl border-2 border-brand-accent/20 shadow-lg shadow-brand-accent/10">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-orange-900 dark:text-orange-100 flex items-center gap-2">

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Friend, UserProfile } from '../types';
@@ -5,8 +6,8 @@ import { UserPlusIcon } from '../components/icons/NavIcons';
 import MapPlaceholder from '../components/MapPlaceholder';
 import { useGeolocation } from '../context/GeolocationContext';
 import { getFriends } from '../utils/api';
+import { useGuestGuard } from '../context/GuestGuardContext';
 
-// FIX: Add MapPin interface to correctly type map pins for MapPlaceholder, allowing both user and friend locations.
 interface MapPin {
     id: number | string;
     latlng: { lat: number; lng: number };
@@ -16,15 +17,15 @@ interface MapPin {
     name?: string;
 }
 
-const FriendsMapPage: React.FC = () => {
+const FriendsMapPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => {
     const [friends, setFriends] = useState<Friend[]>([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
     const location = useLocation();
     const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
     const { position: userPosition } = useGeolocation();
+    const { checkGuest } = useGuestGuard();
     
-    // Load friends data
     useEffect(() => {
         const fetchFriends = async () => {
             setLoading(true);
@@ -38,8 +39,8 @@ const FriendsMapPage: React.FC = () => {
                         id: profile.id,
                         name: profile.name,
                         avatarUrl: profile.avatarUrl,
-                        lastCheckIn: '未知', // This data isn't tracked yet in user profiles
-                        position: { top: '0', left: '0' }, // This gets calculated if not available. Assume MOCK data has it.
+                        lastCheckIn: '未知',
+                        position: { top: '0', left: '0' }, 
                         latlng: profile.latlng,
                     }));
                     setFriends(friendMapData);
@@ -51,41 +52,8 @@ const FriendsMapPage: React.FC = () => {
             setLoading(false);
         };
         fetchFriends();
-    }, [location]);
-    
+    }, [location, refreshTrigger]);
 
-    const handlePinClick = (id: number | string) => {
-        // Delay navigation to prevent race condition with Leaflet event handling
-        setTimeout(() => {
-            navigate(`/friends/${id}`);
-        }, 0);
-    }
-
-    const handleListFriendClick = (id: number) => {
-        navigate(`/friends/${id}`);
-    }
-
-    if (loading) {
-        return <div className="text-center p-10 text-brand-accent">正在尋找你的好友...</div>;
-    }
-
-    if (friends.length === 0) {
-        return (
-            <div className="text-center p-10 flex flex-col items-center justify-center h-full animate-fade-in">
-                <UserPlusIcon className="w-16 h-16 text-brand-muted mb-4" />
-                <h2 className="text-xl font-bold text-brand-light mb-2">你的好友地圖還是空的</h2>
-                <p className="text-brand-muted mb-6">新增一些好友，看看他們都在哪裡出沒吧！</p>
-                <button
-                    onClick={() => navigate('/add-friend')}
-                    className="bg-brand-accent text-brand-primary font-bold py-2 px-6 rounded-lg hover:bg-opacity-80 transition-colors"
-                >
-                    新增好友
-                </button>
-            </div>
-        );
-    }
-    
-    // Create pins for the placeholder map
     const mapPins = useMemo(() => {
         const pins: MapPin[] = friends.map(friend => ({
             id: friend.id,
@@ -106,7 +74,43 @@ const FriendsMapPage: React.FC = () => {
         }
         return pins;
     }, [friends, userPosition, currentUser]);
+    
 
+    const handlePinClick = (id: number | string) => {
+        setTimeout(() => {
+            navigate(`/friends/${id}`);
+        }, 0);
+    }
+
+    const handleListFriendClick = (id: number | string) => {
+        navigate(`/friends/${id}`);
+    }
+
+    const handleAddFriendClick = () => {
+        checkGuest(() => {
+            navigate('/add-friend');
+        });
+    };
+
+    if (loading) {
+        return <div className="text-center p-10 text-brand-accent">正在尋找你的好友...</div>;
+    }
+
+    if (friends.length === 0) {
+        return (
+            <div className="text-center p-10 flex flex-col items-center justify-center h-full animate-fade-in">
+                <UserPlusIcon className="w-16 h-16 text-brand-muted mb-4" />
+                <h2 className="text-xl font-bold text-brand-light mb-2">你的好友地圖還是空的</h2>
+                <p className="text-brand-muted mb-6">新增一些好友，看看他們都在哪裡出沒吧！</p>
+                <button
+                    onClick={handleAddFriendClick}
+                    className="bg-brand-accent text-brand-primary font-bold py-2 px-6 rounded-lg hover:bg-opacity-80 transition-colors"
+                >
+                    新增好友
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col h-[calc(100vh-172px)]">
@@ -118,7 +122,7 @@ const FriendsMapPage: React.FC = () => {
                     pins={mapPins}
                     onPinClick={handlePinClick}
                     center={userPosition ? [userPosition.lat, userPosition.lng] : undefined}
-                    onMapReady={() => {}} // No map control needed here for now
+                    onMapReady={() => {}}
                />
             </div>
 

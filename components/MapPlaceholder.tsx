@@ -1,3 +1,5 @@
+
+
 import React, { useEffect, useRef } from 'react';
 import * as L from 'leaflet';
 
@@ -20,7 +22,7 @@ interface MapPlaceholderProps {
 const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, center, onMapReady }) => {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const markerLayerRef = useRef<L.LayerGroup | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
 
   // Initialize map
   useEffect(() => {
@@ -28,34 +30,32 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
 
     const initialCenter = center || [25.0479, 121.5318]; // Default to Taipei
 
-    mapRef.current = L.map(mapContainerRef.current, {
+    const map = L.map(mapContainerRef.current, {
         center: initialCenter,
         zoom: 13,
         zoomControl: false, // Cleaner UI for mobile
     });
     
-    onMapReady(mapRef.current); // Expose map instance
+    mapRef.current = map;
+    onMapReady(map);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19,
-    }).addTo(mapRef.current);
+    }).addTo(map);
 
-    // Add zoom control to a different position
-    L.control.zoom({ position: 'bottomright' }).addTo(mapRef.current);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // FIX: This is a common fix for a Leaflet race condition in React.
-    // It ensures the map container size is correctly calculated after the initial render,
-    // especially in complex layouts (like flexbox).
-    const map = mapRef.current;
-    setTimeout(() => {
-        map.invalidateSize();
-    }, 0);
-
+    // Create a stable layer group for markers
+    const layerGroup = L.layerGroup().addTo(map);
+    markersLayerRef.current = layerGroup;
 
     return () => {
-      mapRef.current?.remove();
-      mapRef.current = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        markersLayerRef.current = null;
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
@@ -69,19 +69,14 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
 
   // Update markers when pins change
   useEffect(() => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    const markersLayer = markersLayerRef.current;
 
-    // Force map to re-evaluate its size. This prevents errors when the map container's
-    // size is not immediately available on render (e.g., due to CSS flexbox).
-    mapRef.current.invalidateSize();
+    if (!map || !markersLayer) return;
 
-    // Initialize or clear the marker layer
-    if (markerLayerRef.current) {
-      markerLayerRef.current.clearLayers();
-    } else {
-      markerLayerRef.current = L.layerGroup().addTo(mapRef.current);
-    }
-
+    // Use clearLayers() instead of removing the group to prevent '_leaflet_pos' errors
+    markersLayer.clearLayers();
+    
     if (pins.length === 0) return;
 
     const markers: L.Marker[] = [];
@@ -100,7 +95,7 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
           html: `<img src="${pin.avatarUrl}" alt="${pin.name}" class="friend-marker-avatar" />`,
           className: 'friend-marker',
           iconSize: [48, 48],
-          iconAnchor: [24, 48], // Anchor at bottom center of avatar
+          iconAnchor: [24, 48],
         });
       } else {
         icon = L.divIcon({
@@ -119,21 +114,23 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
       
       marker.bindTooltip(pin.name || '', {
         direction: 'top',
-        offset: pin.isUser ? [0, -24] : (pin.isFriend ? [0, -48] : [0, -10]), // Adjust offset based on pin type
+        offset: pin.isUser ? [0, -24] : (pin.isFriend ? [0, -48] : [0, -10]),
         className: 'custom-tooltip'
       });
       
       markers.push(marker);
-      markerLayerRef.current?.addLayer(marker);
+      markersLayer.addLayer(marker);
     });
     
-    // Fit map to bounds of all pins, excluding user pin for better view
     const nonUserMarkers = markers.filter((_, index) => !pins[index].isUser);
     if (nonUserMarkers.length > 0) {
         const group = L.featureGroup(nonUserMarkers);
-        mapRef.current.fitBounds(group.getBounds().pad(0.3));
+        try {
+            map.fitBounds(group.getBounds().pad(0.3));
+        } catch(e) {
+            // Ignore bounds error
+        }
     }
-
   }, [pins, onPinClick]);
 
   return <div ref={mapContainerRef} className="relative w-full h-full" />;

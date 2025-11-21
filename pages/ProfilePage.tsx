@@ -1,16 +1,20 @@
 
 
+
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MOCK_USER_PROFILE } from '../constants';
 import { UserProfile } from '../types';
 import { CoinIcon } from '../components/icons/ActionIcons';
+import { useGuestGuard } from '../context/GuestGuardContext';
 
 const ProfilePage: React.FC = () => {
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [copySuccess, setCopySuccess] = useState('');
     const location = useLocation();
+    const { checkGuest } = useGuestGuard();
+    const navigate = useNavigate();
 
     useEffect(() => {
         setLoading(true);
@@ -29,11 +33,17 @@ const ProfilePage: React.FC = () => {
         if (!profile || !profile.friendCode) return;
         navigator.clipboard.writeText(profile.friendCode).then(() => {
             setCopySuccess('已複製！');
-            setTimeout(() => setCopySuccess(''), 2000); // Reset after 2 seconds
+            setTimeout(() => setCopySuccess(''), 2000);
         }, (err) => {
             setCopySuccess('複製失敗');
             console.error('Could not copy text: ', err);
             setTimeout(() => setCopySuccess(''), 2000);
+        });
+    };
+
+    const handleRestrictedClick = (path: string) => {
+        checkGuest(() => {
+            navigate(path);
         });
     };
 
@@ -42,12 +52,15 @@ const ProfilePage: React.FC = () => {
     }
     
     const xpPercentage = (profile.xp / profile.xpToNextLevel) * 100;
+    const isGuest = profile.id === 0 || profile.isGuest;
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col items-center space-y-2 p-6 bg-brand-secondary rounded-2xl border-2 border-brand-accent/20">
                 <img src={profile.avatarUrl} alt={profile.name} className="w-28 h-28 rounded-full object-cover border-4 border-brand-accent shadow-lg shadow-brand-accent/30 mb-2" />
-                <h2 className="text-3xl font-bold text-brand-light">{profile.name}</h2>
+                <h2 className="text-3xl font-bold text-brand-light">
+                    {profile.displayName || profile.name || profile.email?.split('@')[0] || '用戶'}
+                </h2>
 
                 <div className="flex items-center gap-2 bg-brand-primary px-3 py-1 rounded-full border border-brand-accent/30">
                     <CoinIcon className="w-5 h-5 text-yellow-500" />
@@ -60,7 +73,7 @@ const ProfilePage: React.FC = () => {
                     {profile.phone && <p>{profile.phone}</p>}
                 </div>
 
-                {profile.friendCode && (
+                {!isGuest && profile.friendCode && (
                     <div className="w-full text-center pt-4">
                         <p className="text-sm text-brand-muted mb-2">你的好友ID</p>
                         <div className="flex items-center justify-center gap-2">
@@ -91,10 +104,10 @@ const ProfilePage: React.FC = () => {
                     <p className="text-2xl font-bold text-brand-accent">{profile.missionsCompleted}</p>
                     <p className="text-sm text-brand-muted">完成任務</p>
                 </div>
-                <Link to="/friends-list" className="bg-brand-secondary p-4 rounded-lg border-2 border-brand-accent/20 hover:border-brand-accent/50 transition-colors">
-                    <p className="text-2xl font-bold text-brand-accent">{profile.friends.length}</p>
+                <div onClick={() => handleRestrictedClick('/friends-list')} className="bg-brand-secondary p-4 rounded-lg border-2 border-brand-accent/20 hover:border-brand-accent/50 transition-colors cursor-pointer">
+                    <p className="text-2xl font-bold text-brand-accent">{(profile.friends || []).length}</p>
                     <p className="text-sm text-brand-muted">位好友</p>
-                </Link>
+                </div>
                 <div className="bg-brand-secondary p-4 rounded-lg border-2 border-brand-accent/20">
                     <p className="text-2xl font-bold text-brand-accent">{profile.checkIns}</p>
                     <p className="text-sm text-brand-muted">打卡次數</p>
@@ -102,40 +115,40 @@ const ProfilePage: React.FC = () => {
             </div>
 
             <div className="bg-brand-secondary rounded-lg overflow-hidden border-2 border-brand-accent/20">
-                <Link to="/profile/edit" className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
+                <button onClick={() => handleRestrictedClick('/profile/edit')} className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
                     編輯個人檔案
-                </Link>
+                </button>
                 <div className="h-px bg-brand-accent/10"></div>
-                <Link to="/orders" className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
+                <button onClick={() => handleRestrictedClick('/orders')} className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
                     我的訂單
-                </Link>
+                </button>
                 <div className="h-px bg-brand-accent/10"></div>
-                <Link to="/friends-list" className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
+                <button onClick={() => handleRestrictedClick('/friends-list')} className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
                     我的好友
-                </Link>
+                </button>
                 <div className="h-px bg-brand-accent/10"></div>
                 <Link to="/journal" className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
                     我的品飲筆記
                 </Link>
                 <div className="h-px bg-brand-accent/10"></div>
-                <Link to="/redeem" className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
+                <button onClick={() => handleRestrictedClick('/redeem')} className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
                     積分兌換
-                </Link>
+                </button>
                 <div className="h-px bg-brand-accent/10"></div>
-                <Link to="/coupons" className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
+                <button onClick={() => handleRestrictedClick('/coupons')} className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
                     我的優惠券
-                </Link>
+                </button>
                 <div className="h-px bg-brand-accent/10"></div>
-                <Link to="/profile/privacy" className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
+                <button onClick={() => handleRestrictedClick('/profile/privacy')} className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
                     隱私設定
-                </Link>
+                </button>
                 <div className="h-px bg-brand-accent/10"></div>
-                <Link to="/profile/notifications" className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
+                <button onClick={() => handleRestrictedClick('/profile/notifications')} className="block w-full text-left p-4 hover:bg-brand-primary/80 transition-colors">
                     通知設定
-                </Link>
+                </button>
                 <div className="h-px bg-brand-accent/10"></div>
                 <Link to="/logout" className="block w-full text-left p-4 text-red-500 font-semibold hover:bg-red-500/10 transition-colors">
-                    登出
+                    {isGuest ? '註冊 / 登入' : '登出'}
                 </Link>
             </div>
         </div>

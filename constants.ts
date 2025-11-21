@@ -1,3 +1,4 @@
+
 import { Store, Deal, Mission, UserProfile, FeedItem, Order, RedeemItem, Coupon, MockUser } from './types';
 
 // Helper function to format date as YYYY-MM-DD
@@ -12,6 +13,66 @@ export const formatDate = (date: Date): string => {
 
     return [year, month, day].join('-');
 }
+
+// Helper to convert Firebase Timestamp or string to Date object
+const toDateObj = (dateInput: any): Date | null => {
+    if (!dateInput) return null;
+    
+    // Handle Firestore Timestamp (live object)
+    if (typeof dateInput.toDate === 'function') {
+        return dateInput.toDate();
+    } 
+    
+    // Handle Serialized Firestore Timestamp (from localStorage JSON: { seconds: 123... })
+    if (typeof dateInput === 'object' && dateInput !== null && 'seconds' in dateInput) {
+        return new Date(dateInput.seconds * 1000);
+    }
+
+    if (dateInput instanceof Date) {
+        return dateInput;
+    } else {
+        return new Date(dateInput);
+    }
+};
+
+// Helper function to format date and time as YYYY/MM/DD HH:mm
+export const formatDateTime = (dateInput: any): string => {
+    const date = toDateObj(dateInput);
+    if (!date || isNaN(date.getTime())) return '剛剛';
+
+    return date.toLocaleString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+}
+
+// Helper for Chat: Returns only time (e.g., 14:30)
+export const formatTime = (dateInput: any): string => {
+    const date = toDateObj(dateInput);
+    if (!date || isNaN(date.getTime())) return '';
+
+    return date.toLocaleString('zh-TW', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+};
+
+// Helper for Chat: Returns only date (e.g., 2023/10/27) for headers
+export const formatDateHeader = (dateInput: any): string => {
+    const date = toDateObj(dateInput);
+    if (!date || isNaN(date.getTime())) return '';
+
+    return date.toLocaleString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    });
+};
 
 const today = new Date();
 
@@ -450,18 +511,18 @@ export const MOCK_DEALS: Deal[] = [
 ];
 
 export const MOCK_MISSIONS: Mission[] = [
-  { id: 1, title: '探險家', description: '一晚在3家不同的酒吧打卡。', reward: { xp: 100 }, progress: 0, goal: 3 },
-  { id: 2, title: '雞尾酒鑑賞家', description: '品嚐5種不同的雞尾酒。', reward: { xp: 150 }, progress: 0, goal: 5 },
-  { id: 3, title: '啤酒好夥伴', description: '與朋友分享一杯啤酒並標記他們。', reward: { xp: 50 }, progress: 0, goal: 1 },
-  { id: 4, title: '初來乍到', description: '完成你的第一次酒吧打卡。', reward: { xp: 100, points: 50 }, progress: 0, goal: 1 },
-  { id: 5, title: '忠實顧客', description: '在同一家酒吧打卡 5 次。', reward: { xp: 200 }, progress: 0, goal: 5 },
-  { id: 6, title: '威士忌行家', description: '品嚐 3 種不同的單一麥芽威士忌。', reward: { xp: 150 }, progress: 0, goal: 3 },
-  { id: 7, title: '社交蝴蝶', description: '一週內與 5 位不同的好友一起打卡。', reward: { xp: 250 }, progress: 0, goal: 5 },
-  { id: 8, title: '週五狂熱夜', description: '在週五晚上打卡。', reward: { xp: 50 }, progress: 0, goal: 1 },
-  { id: 9, title: '評論家', description: '為 3 家不同的酒吧留下評論。', reward: { xp: 120 }, progress: 0, goal: 3 },
-  { id: 10, title: 'Speakeasy 獵人', description: '在任一 Speakeasy 酒吧打卡。', reward: { xp: 80 }, progress: 0, goal: 1 },
-  { id: 11, title: '早鳥優惠', description: '在歡樂時光 (Happy Hour) 期間打卡。', reward: { xp: 60 }, progress: 0, goal: 1 },
-  { id: 12, title: '終極探險家', description: '總共在 10 家不同的酒吧打卡。', reward: { xp: 500, points: 100 }, progress: 0, goal: 10 },
+  { id: 1, title: '探險家', description: '挑戰極限！一晚內探訪 3 間不同風格酒吧並打卡，證明你是城市酒吧專家。', reward: { xp: 100 }, progress: 0, goal: 3 },
+  { id: 2, title: '雞尾酒鑑賞家', description: '你的品味是藝術與故事。在筆記中為 5 款雞尾酒留下專業品評，引領潮流。', reward: { xp: 150 }, progress: 0, goal: 5 },
+  { id: 3, title: '微醺留影', description: '用照片記錄歡樂瞬間！發布一則附帶照片的動態，讓大家看看你的微醺模樣。', reward: { xp: 50 }, progress: 0, goal: 1 },
+  { id: 4, title: '初來乍到', description: '完成你的第一次酒吧打卡，為你的酒吧探險傳奇寫下精彩序幕。', reward: { xp: 100, points: 50 }, progress: 0, goal: 1 },
+  { id: 5, title: '忠實顧客', description: '在同一間心愛酒吧累積打卡 5 次，讓調酒師都記得你，成為店家認證 VIP！', reward: { xp: 200 }, progress: 0, goal: 5 },
+  { id: 6, title: '威士忌行家', description: '深入琥珀色液體的流金歲月。為 3 款威士忌寫下品飲心得，展現你的行家品味。', reward: { xp: 150 }, progress: 0, goal: 3 },
+  { id: 7, title: '社交蝴蝶', description: '展現你的揪團魅力！一週內發布 5 篇與不同好友歡聚的動態，成為派對核心。', reward: { xp: 250 }, progress: 0, goal: 5 },
+  { id: 8, title: '週五狂熱夜', description: '在最期待的週五夜晚前往任何酒吧打卡，用一杯好酒迎接週末自由。', reward: { xp: 50 }, progress: 0, goal: 1 },
+  { id: 9, title: '評論家', description: '你的舌尖是社群米其林指南。為 3 間造訪過的酒吧留下星級評論與心得。', reward: { xp: 120 }, progress: 0, goal: 3 },
+  { id: 10, title: 'Speakeasy 獵人', description: '證明你是巷仔內探險家！成功在任何一間隱藏 Speakeasy 酒吧完成打卡。', reward: { xp: 80 }, progress: 0, goal: 1 },
+  { id: 11, title: '早鳥優惠', description: '懂得把握時間的聰明酒客！在傍晚 5 點到 7 點的 Happy Hour 黃金時段完成打卡。', reward: { xp: 60 }, progress: 0, goal: 1 },
+  { id: 12, title: '終極探險家', description: '城市霓虹都為你而亮！累積在 10 間完全不同的酒吧打卡，解鎖榮耀稱號。', reward: { xp: 500, points: 100 }, progress: 0, goal: 10 },
 ];
 
 export const MOCK_USER_PROFILE: UserProfile = {
@@ -577,11 +638,7 @@ export const MOCK_USERS: MockUser[] = [
 // All mock feed items are removed to provide a clean slate for the user.
 export const MOCK_FEED_ITEMS: FeedItem[] = [];
 
-export const MOCK_ORDERS: Order[] = [
-  { id: 'ORD002', storeName: 'Draft Land (站著喝)', date: '2024-08-10', time: '20:30', people: 4, status: 'Completed' },
-  { id: 'ORD003', storeName: 'CÉ LA VI Taipei', date: '2024-08-05', time: '21:00', people: 3, status: 'Cancelled' },
-  { id: 'ORD004', storeName: 'Ounce Taipei', date: '2024-07-28', time: '22:00', people: 5, status: 'Completed' },
-];
+export const MOCK_ORDERS: Order[] = [];
 
 export const MOCK_REDEEM_ITEMS: RedeemItem[] = [
     { id: 1, title: '店家 9 折優惠券', description: '可在任何合作店家使用，享受單次消費總金額九折優惠。', cost: 250 },
@@ -590,12 +647,36 @@ export const MOCK_REDEEM_ITEMS: RedeemItem[] = [
     { id: 4, title: '合作店家 $100 折價券', description: '可在任何合作店家使用，消費滿 $500 即可折抵 $100。', cost: 400 },
 ];
 
-export const MOCK_COUPONS: Coupon[] = [
-  { id: 1, storeName: 'Indulge Experimental Bistro', title: '店家 9 折優惠券', description: '單次消費總金額九折優惠。', expiry: formatDate(addDays(today, 60)), status: 'valid' },
-  { id: 2, storeName: 'The Public House', title: '免費小點一份', description: '兌換一份免費的炸魚薯條。', expiry: formatDate(addDays(today, 30)), status: 'valid' },
-  { id: 3, storeName: 'HANKO 60', title: '第二杯半價', description: '購買任一杯經典調酒，第二杯享半價優惠。', expiry: formatDate(addDays(today, 15)), status: 'used' },
-  { id: 4, storeName: 'Bar Mood Taipei 吧沐', title: '免費shot一杯', description: '消費滿千即贈送一杯當日特選shot。', expiry: formatDate(addDays(today, -10)), status: 'expired' },
+// Defined Welcome Coupons to be used across the app
+export const WELCOME_COUPONS: Coupon[] = [
+    {
+        id: 999001,
+        storeName: '乾不揪官方',
+        title: '新戶見面禮：$50 折價券',
+        description: '全平台合作店家消費滿 $500 現折 $50。',
+        expiry: formatDate(addDays(today, 30)),
+        status: 'valid'
+    },
+    {
+        id: 999002,
+        storeName: '乾不揪官方',
+        title: '新戶微醺禮：免費 Shot 一杯',
+        description: '憑券至指定合作酒吧兌換迎賓 Shot 一杯。',
+        expiry: formatDate(addDays(today, 30)),
+        status: 'valid'
+    },
+    {
+        id: 999003,
+        storeName: '乾不揪官方',
+        title: '好友歡聚：整單 9 折',
+        description: '四人以上同行，整筆消費享 9 折優惠 (最高折抵 $300)。',
+        expiry: formatDate(addDays(today, 60)),
+        status: 'valid'
+    }
 ];
+
+// Set mock coupons to the welcome coupons by default so new/guest users see them
+export const MOCK_COUPONS: Coupon[] = [...WELCOME_COUPONS];
 
 export const MOCK_REDEMPTION_CODES: Record<string, { couponTemplate: Omit<Coupon, 'id' | 'status' | 'expiry'>, daysValid: number }> = {
     'WELCOME2024': {

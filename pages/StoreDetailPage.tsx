@@ -1,11 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MOCK_STORES, MOCK_ORDERS } from '../constants';
 import { Store, Order, UserProfile, Review } from '../types';
 import StoreDetail from '../components/StoreDetail';
+import { useGuestGuard } from '../context/GuestGuardContext';
 
-// NOTE: ReservationModal is duplicated from MapPage.tsx to avoid a larger refactor
-// of creating a shared component file, thus keeping changes more minimal.
 const ReservationModal: React.FC<{
     store: Store | null;
     isOpen: boolean;
@@ -29,9 +29,15 @@ const ReservationModal: React.FC<{
 
     const handleConfirm = () => {
         if (!store) return;
+        
+        // Get current user ID
+        const profileData = localStorage.getItem('userProfile');
+        const profile: UserProfile | null = profileData ? JSON.parse(profileData) : null;
+        const userId = profile ? profile.id : 0;
 
         const newOrder: Order = {
             id: `ORD${Date.now()}`,
+            userId: userId, // Assign owner
             storeName: store.name,
             date: date,
             time: time,
@@ -54,7 +60,7 @@ const ReservationModal: React.FC<{
     if (!isOpen || !store) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex justify-center items-center p-4 backdrop-blur-md animate-fade-in">
             <div className="bg-brand-secondary rounded-2xl p-6 w-full max-w-sm border-2 border-brand-accent/30 shadow-2xl shadow-brand-accent/10">
                 {step === 'form' && (
                     <>
@@ -140,6 +146,7 @@ const StoreDetailPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+    const { checkGuest } = useGuestGuard();
 
     useEffect(() => {
         setLoading(true);
@@ -170,8 +177,8 @@ const StoreDetailPage: React.FC = () => {
         localStorage.setItem('stores', JSON.stringify(updatedAllStores));
     };
 
-    const handleOpenModal = () => {
-        setIsModalOpen(true);
+    const handleReservationClick = () => {
+        checkGuest(() => setIsModalOpen(true));
     };
 
     const handleCloseModal = () => {
@@ -196,7 +203,7 @@ const StoreDetailPage: React.FC = () => {
             <StoreDetail 
                 store={store} 
                 onBack={() => navigate(-1)}
-                onReserveClick={handleOpenModal}
+                onReserveClick={handleReservationClick}
                 currentUser={currentUser}
                 onUpdateReviews={handleUpdateReviews}
             />

@@ -1,6 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Store, MenuItem, Review, UserProfile } from '../types';
 import { BackIcon, HeartIcon, LocationMarkerIcon, StarIcon, PhoneIcon, ClockIcon, CurrencyDollarIcon } from './icons/ActionIcons';
+import { useGuestGuard } from '../context/GuestGuardContext';
 
 const availabilityStyles = {
     Available: { color: 'bg-green-500', text: '有空位' },
@@ -19,6 +22,8 @@ const StoreDetail: React.FC<{
 }> = ({ store, onBack, onReserveClick, currentUser, onUpdateReviews }) => {
     const [isFavorite, setIsFavorite] = useState(false);
     const [activeTab, setActiveTab] = useState<Tab>('info');
+    const navigate = useNavigate();
+    const { checkGuest } = useGuestGuard();
 
     useEffect(() => {
         const favoriteStoreIds = JSON.parse(localStorage.getItem('favoriteStoreIds') || '[]') as number[];
@@ -26,18 +31,20 @@ const StoreDetail: React.FC<{
     }, [store.id]);
 
     const handleToggleFavorite = () => {
-        const favoriteStoreIds = JSON.parse(localStorage.getItem('favoriteStoreIds') || '[]') as number[];
-        const storeId = store.id;
-        let updatedIds;
+        checkGuest(() => {
+            const favoriteStoreIds = JSON.parse(localStorage.getItem('favoriteStoreIds') || '[]') as number[];
+            const storeId = store.id;
+            let updatedIds;
 
-        if (favoriteStoreIds.includes(storeId)) {
-            updatedIds = favoriteStoreIds.filter((id: number) => id !== storeId);
-        } else {
-            updatedIds = [...favoriteStoreIds, storeId];
-        }
-        
-        localStorage.setItem('favoriteStoreIds', JSON.stringify(updatedIds));
-        setIsFavorite(!isFavorite);
+            if (favoriteStoreIds.includes(storeId)) {
+                updatedIds = favoriteStoreIds.filter((id: number) => id !== storeId);
+            } else {
+                updatedIds = [...favoriteStoreIds, storeId];
+            }
+            
+            localStorage.setItem('favoriteStoreIds', JSON.stringify(updatedIds));
+            setIsFavorite(!isFavorite);
+        });
     };
 
     const status = availabilityStyles[store.availability];
@@ -192,58 +199,58 @@ const ReviewsTab: React.FC<{
 }> = ({ reviews, currentUser, onUpdateReviews }) => {
     const [newRating, setNewRating] = useState(0);
     const [newComment, setNewComment] = useState('');
-    const isGuest = !currentUser || currentUser.id === 0;
-
+    const { checkGuest } = useGuestGuard();
+    
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (isGuest || !currentUser || newRating === 0 || newComment.trim() === '') return;
         
-        const newReview: Review = {
-            id: Date.now(),
-            author: currentUser.name,
-            rating: newRating,
-            comment: newComment.trim(),
-        };
-        
-        onUpdateReviews(newReview);
+        checkGuest(() => {
+            if (!currentUser || newRating === 0 || newComment.trim() === '') return;
+            
+            const newReview: Review = {
+                id: Date.now(),
+                author: currentUser.name,
+                rating: newRating,
+                comment: newComment.trim(),
+            };
+            
+            onUpdateReviews(newReview);
 
-        // Reset form
-        setNewRating(0);
-        setNewComment('');
+            // Reset form
+            setNewRating(0);
+            setNewComment('');
+        });
     };
 
     const sortedReviews = [...reviews].sort((a, b) => b.id - a.id);
 
     return (
         <div className="space-y-4">
-            {!isGuest && (
-                <form onSubmit={handleSubmit} className="bg-brand-primary p-4 rounded-lg border-2 border-brand-accent/20">
-                    <h4 className="font-bold text-brand-light mb-2">新增你的評論</h4>
-                    <div className="flex items-center mb-3">
-                        <span className="text-brand-muted text-sm mr-2">評分:</span>
-                        {[...Array(5)].map((_, i) => (
-                            <button type="button" key={i} onClick={() => setNewRating(i + 1)} aria-label={`Rate ${i + 1} stars`}>
-                                <StarIcon className={`w-7 h-7 cursor-pointer transition-colors ${i < newRating ? 'text-yellow-400' : 'text-brand-muted/40 hover:text-yellow-300'}`} />
-                            </button>
-                        ))}
-                    </div>
-                    <textarea
-                        value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        rows={3}
-                        placeholder="分享你的體驗..."
-                        className="w-full bg-brand-secondary border border-brand-accent/50 rounded-md p-2 text-brand-light focus:ring-brand-accent focus:border-brand-accent mb-3"
-                        required
-                    />
-                    <button 
-                        type="submit" 
-                        disabled={newRating === 0 || newComment.trim() === ''} 
-                        className="w-full bg-brand-accent text-brand-primary font-bold py-2 px-4 rounded-lg hover:bg-opacity-80 transition-colors disabled:bg-brand-muted/50 disabled:cursor-not-allowed"
-                    >
-                        送出評論
-                    </button>
-                </form>
-            )}
+            {/* Always show form to allow clicks, handle restriction in submit */}
+            <form onSubmit={handleSubmit} className="bg-brand-primary p-4 rounded-lg border-2 border-brand-accent/20">
+                <h4 className="font-bold text-brand-light mb-2">新增你的評論</h4>
+                <div className="flex items-center mb-3">
+                    <span className="text-brand-muted text-sm mr-2">評分:</span>
+                    {[...Array(5)].map((_, i) => (
+                        <button type="button" key={i} onClick={() => setNewRating(i + 1)} aria-label={`Rate ${i + 1} stars`}>
+                            <StarIcon className={`w-7 h-7 cursor-pointer transition-colors ${i < newRating ? 'text-yellow-400' : 'text-brand-muted/40 hover:text-yellow-300'}`} />
+                        </button>
+                    ))}
+                </div>
+                <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    rows={3}
+                    placeholder="分享你的體驗..."
+                    className="w-full bg-brand-secondary border border-brand-accent/50 rounded-md p-2 text-brand-light focus:ring-brand-accent focus:border-brand-accent mb-3"
+                />
+                <button 
+                    type="submit" 
+                    className="w-full bg-brand-accent text-brand-primary font-bold py-2 px-4 rounded-lg hover:bg-opacity-80 transition-colors"
+                >
+                    送出評論
+                </button>
+            </form>
 
             {sortedReviews.length > 0 ? sortedReviews.map(review => (
                 <div key={review.id} className="bg-brand-primary p-3 rounded-md border border-brand-accent/20">
@@ -258,7 +265,7 @@ const ReviewsTab: React.FC<{
                     <p className="text-brand-light text-sm">{review.comment}</p>
                 </div>
             )) : (
-                <p className="text-brand-muted text-center py-4">{isGuest ? "還沒有任何評論。" : "成為第一個留下評論的人！"}</p>
+                <p className="text-brand-muted text-center py-4">成為第一個留下評論的人！</p>
             )}
         </div>
     );

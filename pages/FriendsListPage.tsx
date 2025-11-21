@@ -1,50 +1,99 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { UserProfile } from '../types';
+import { UserProfile, FriendRequest } from '../types';
 import { BackIcon } from '../components/icons/ActionIcons';
-import { getFriends } from '../utils/api';
+import { getFriends, userApi } from '../utils/api';
+import { auth, db } from '../firebase/config';
 
 const FriendsListPage: React.FC = () => {
     const navigate = useNavigate();
-    const location = useLocation();
     const [searchTerm, setSearchTerm] = useState('');
     const [friends, setFriends] = useState<UserProfile[]>([]);
+    const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchFriends = async () => {
-            setLoading(true);
-            const profileData = localStorage.getItem('userProfile');
-            if (profileData) {
-                const currentUser: UserProfile = JSON.parse(profileData);
-                
-                if (!currentUser || typeof currentUser.id === 'undefined') {
-                    console.error("Cannot get current user ID from localStorage");
-                    setLoading(false);
-                    setFriends([]);
-                    return;
-                }
+        setLoading(true);
+        let unsubscribeRequests = () => {};
 
+        const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+            // Clean up previous listener
+            unsubscribeRequests();
+
+            if (user) {
                 try {
-                    // Pass the user ID as a number, as required by the getFriends function signature.
-                    const friendProfiles = await getFriends(currentUser.id);
+                    // Fetch friends list
+                    const friendProfiles = await getFriends(user.uid);
                     setFriends(friendProfiles);
+
+                    // Set up listener for friend requests in receivedFriendRequests root collection
+                    const requestsRef = db.collection('receivedFriendRequests');
+                    const q = requestsRef.where('toUid', '==', user.uid).where('status', '==', 'pending');
+                    
+                    unsubscribeRequests = q.onSnapshot((snapshot) => {
+                        const requests: FriendRequest[] = snapshot.docs.map(doc => {
+                            const data = doc.data();
+                            // 資料庫欄位對應修正
+                            return {
+                                id: doc.id,
+                                senderUid: data.fromUid || data.senderUid,
+                                senderName: data.from || data.senderName,
+                                senderAvatarUrl: data.senderAvatarUrl || '',
+                                status: data.status || 'pending',
+                                timestamp: data.timestamp,
+                                ...data,
+                            } as FriendRequest;
+                        });
+                        setPendingRequests(requests);
+                        setLoading(false); // Only stop loading after requests are loaded
+                    }, (error) => {
+                        console.error("Friend request listener error:", error);
+                        setLoading(false);
+                    });
+
                 } catch (error) {
-                    console.error("Failed to fetch friends:", error);
+                    console.error("Failed to fetch friends data:", error);
                     setFriends([]);
+                    setPendingRequests([]);
+                    setLoading(false);
                 }
+            } else {
+                console.log("User is not logged in.");
+                setFriends([]);
+                setPendingRequests([]);
+                setLoading(false);
             }
-            setLoading(false);
+        });
+
+        return () => {
+            unsubscribeAuth();
+            unsubscribeRequests();
         };
-        fetchFriends();
-    }, [location]);
+    }, []);
+
+    const handleRespond = async (e: React.MouseEvent, request: FriendRequest, accept: boolean) => {
+        e.stopPropagation();
+        
+        try {
+            await userApi.respondFriendRequest(request.id, request.senderUid, accept);
+
+            if (accept && auth.currentUser) {
+                // Re-fetch friends list to show the new friend
+                const friendProfiles = await getFriends(auth.currentUser.uid);
+                setFriends(friendProfiles);
+            }
+        } catch (error) {
+            console.error("Failed to respond:", error);
+            alert("操作失敗，請稍後再試。");
+        }
+    };
 
     const filteredFriends = friends.filter(friend =>
-        friend.name.toLowerCase().includes(searchTerm.toLowerCase())
+        (friend.name || '').toLowerCase().includes((searchTerm || '').toLowerCase())
     );
 
-    // The friend ID is a number according to the UserProfile type.
-    const handleFriendClick = (id: number) => {
+    const handleFriendClick = (id: number | string) => {
         navigate(`/friends/${id}`);
     };
 
@@ -78,8 +127,50 @@ const FriendsListPage: React.FC = () => {
                 </div>
             </div>
 
+            {/* Pending Requests Section */}
+            {pendingRequests.length > 0 && (
+                <div className="space-y-3 mb-6">
+                    <h3 className="text-sm font-bold text-brand-accent px-1 flex items-center gap-2">
+                        好友邀請 
+                        <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{pendingRequests.length}</span>
+                    </h3>
+                    {pendingRequests.map(req => (
+                        <div
+                            key={req.id}
+                            onClick={() => handleFriendClick(req.senderUid)}
+                            className="bg-brand-primary p-3 rounded-xl border-2 border-brand-accent/30 flex items-center gap-4 shadow-sm cursor-pointer"
+                        >
+                            <img src={req.senderAvatarUrl} alt={req.senderName} className="w-12 h-12 rounded-full object-cover border border-brand-accent/20" />
+                            <div className="flex-grow min-w-0">
+                                <h3 className="font-bold text-brand-light truncate">{req.senderName}</h3>
+                                <p className="text-xs text-brand-muted truncate">想加你為好友</p>
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0">
+                                <button 
+                                    onClick={(e) => handleRespond(e, req, true)}
+                                    className="bg-brand-accent text-brand-primary text-xs font-bold px-3 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+                                >
+                                    確認
+                                </button>
+                                <button 
+                                    onClick={(e) => handleRespond(e, req, false)}
+                                    className="bg-brand-secondary border border-brand-accent/20 text-brand-muted text-xs font-bold px-3 py-2 rounded-lg hover:bg-brand-accent/10 transition-colors"
+                                >
+                                    拒絕
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                    <div className="h-px bg-brand-accent/10 my-4"></div>
+                </div>
+            )}
+
             {/* Friends List */}
             <div className="space-y-3">
+                {pendingRequests.length === 0 && filteredFriends.length > 0 && (
+                     <h3 className="text-sm font-bold text-brand-muted px-1">我的好友 ({filteredFriends.length})</h3>
+                )}
+                
                 {filteredFriends.length > 0 ? filteredFriends.map(friend => (
                     <div
                         key={friend.id}

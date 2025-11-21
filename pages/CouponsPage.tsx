@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MOCK_COUPONS, MOCK_REDEMPTION_CODES, formatDate, addDays } from '../constants';
@@ -39,7 +40,7 @@ const RedemptionModal: React.FC<{
     if (!isOpen || !coupon) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-50 flex justify-center items-center p-4 backdrop-blur-md animate-fade-in">
             <div className="bg-brand-secondary rounded-2xl p-6 w-full max-w-sm border-2 border-brand-accent/30 shadow-2xl shadow-brand-accent/10">
                 {step === 'confirm' && (
                     <>
