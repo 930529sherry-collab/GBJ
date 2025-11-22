@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MOCK_STORES } from '../constants';
@@ -310,6 +311,7 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
         try {
             // 呼叫後端 API 建立貼文
             // 我們傳遞 content, storeName, imageUrl, visibility
+            // 後端會自己去抓正確名字
             await userApi.createPost(content, store.name, imageUrl, visibility);
 
             // 更新本地狀態 (打卡數+1)
@@ -329,7 +331,7 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
 
         } catch (e) {
             console.error("Post failed", e);
-            alert("發布失敗，請檢查網路連線。");
+            alert("發布失敗，請稍後再試");
         }
     };
 
