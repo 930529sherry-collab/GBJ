@@ -1,8 +1,9 @@
 
+
 import firebase, { db, functions, auth } from '../firebase/config';
 // Removed modular import to fix SyntaxError: import { httpsCallableFromUrl } from 'firebase/functions';
 import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest } from '../types';
-import { MOCK_USERS, MOCK_STORES, WELCOME_COUPONS } from '../constants';
+import { MOCK_STORES, WELCOME_COUPONS } from '../constants';
 
 // ============================================================================
 // 1. 核心工具 (Core Utilities)
@@ -30,7 +31,8 @@ const callFunction = async <T, R>(functionName: string, data?: T): Promise<R> =>
                                 errorMsg.includes('already pending') ||
                                 errorMsg.includes('not found') || 
                                 errorMsg.includes('already processed') ||
-                                errorMsg.includes('display name already taken');
+                                errorMsg.includes('display name already taken') ||
+                                (errorMsg.includes('internal') && functionName === 'respondfriendrequest'); // Ignore internal error for this function as we have fallback
 
         if (!isExpectedError) {
             console.error(`Cloud Function Error [${functionName}]:`, error);
@@ -99,12 +101,10 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
     
     // Handle guest user (ID 0) - Legacy check
     if (String(uid) === '0') {
-        const guest = MOCK_USERS.find(u => u.id === 0);
-        if (guest) return guest.profile;
         return {
             id: 0,
             name: '訪客',
-            avatarUrl: 'https://picsum.photos/200',
+            avatarUrl: 'https://picsum.photos/200?random=guest',
             level: 1,
             xp: 0,
             xpToNextLevel: 100,
@@ -112,9 +112,10 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
             missionsCompleted: 0,
             checkIns: 0,
             friends: [],
-            latlng: { lat: 25.0330, lng: 121.5654 },
+            notifications: [],
+            latlng: { lat: 25.0330, lng: 121.5654 }, // Taipei 101 default
             isGuest: true
-        } as any;
+        } as unknown as UserProfile;
     }
 
     try {
@@ -142,18 +143,13 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
                 ...data,
                 friends: friendsList,
                 notifications: data?.notifications || [],
+                latlng: data?.latlng || { lat: 25.0330, lng: 121.5654 }, // Taipei 101 default
             } as UserProfile;
         }
-        // Fallback to mocks if not found in DB (for dev/demo)
-        const mock = MOCK_USERS.find(u => String(u.id) === String(uid));
-        if (mock) return mock.profile;
-
+        
+        // Removed fallback to mock users to prevent showing non-existent profiles
         throw new Error("User profile not found");
     } catch (error: any) {
-        // Fallback to mocks on error
-        const mock = MOCK_USERS.find(u => String(u.id) === String(uid));
-        if (mock) return mock.profile;
-
         // Graceful fallback for permission errors (e.g. during auth transitions or rules issues)
         const errorMsg = error.message || String(error);
         if (error.code === 'permission-denied' || errorMsg.includes('Missing or insufficient permissions') || errorMsg.includes('permission-denied')) {
@@ -367,10 +363,13 @@ export const getStores = async (): Promise<Store[]> => {
             return MOCK_STORES;
         }
         
-        return snapshot.docs.map(doc => {
+        const stores = snapshot.docs.map(doc => {
              const data = doc.data();
              return { ...data, id: typeof data.id === 'number' ? data.id : Number(doc.id) } as Store;
         });
+        // Filter out stores without valid latlng
+        return stores.filter(s => s.latlng && typeof s.latlng.lat === 'number' && typeof s.latlng.lng === 'number');
+
     } catch (e: any) {
         // Handle missing permissions gracefully by using mock data
         const errorMsg = e.message || String(e);
@@ -399,35 +398,18 @@ export const storeApi = {
 
 export const searchUsers = async (queryTerm: string): Promise<SearchableUser[]> => {
     if (!queryTerm?.trim()) return [];
-    const term = queryTerm.trim().toLowerCase();
-
-    // 1. Local Search (Mock Data)
-    const localResults: SearchableUser[] = MOCK_USERS
-        .filter(user => {
-            const p = user.profile;
-            const nameMatch = p.name && p.name.toLowerCase().includes(term);
-            const displayNameMatch = p.displayName && p.displayName.toLowerCase().includes(term);
-            const codeMatch = p.friendCode && p.friendCode.toLowerCase().includes(term);
-            const idMatch = String(user.id).toLowerCase() === term;
-            const emailMatch = p.email && p.email.toLowerCase().includes(term);
-            return nameMatch || displayNameMatch || codeMatch || idMatch || emailMatch;
-        })
-        .map(user => ({
-            id: user.profile.id,
-            name: user.profile.displayName || user.profile.name || '用戶',
-            avatarUrl: user.profile.avatarUrl,
-            level: user.profile.level,
-            isFriend: false 
-        }));
-
-    // 2. Cloud Search
+    
+    // Cloud Search Only (Mock users removed)
     try {
-        // If guest, this will throw and go to catch, returning local results
+        // If guest, this will throw and go to catch, returning empty
         const cloudResults = await callFunction<any, any[]>('searchUsers', { query: queryTerm });
         
-        const merged = [...localResults];
+        const results: SearchableUser[] = [];
         if (Array.isArray(cloudResults)) {
             cloudResults.forEach(cUser => {
+                // Explicitly filter out mock-like IDs if they happen to sneak in
+                if (String(cUser.id).length < 5 && !isNaN(Number(cUser.id))) return;
+
                 // Ensure we handle potential missing fields from raw cloud data
                 const safeUser: SearchableUser = {
                     id: cUser.id || cUser.uid,
@@ -436,18 +418,13 @@ export const searchUsers = async (queryTerm: string): Promise<SearchableUser[]> 
                     level: typeof cUser.level === 'number' ? cUser.level : 1,
                     isFriend: false
                 };
-
-                // Deduplicate based on ID
-                if (!merged.some(lUser => String(lUser.id) === String(safeUser.id))) {
-                    merged.push(safeUser);
-                }
+                results.push(safeUser);
             });
         }
-        return merged;
+        return results;
     } catch (e) {
-        // Suppress error for guests or network issues, ensuring search always returns at least local results
-        // console.warn("Cloud search unavailable:", e); 
-        return localResults;
+        // Suppress error for guests or network issues
+        return []; 
     }
 };
 
@@ -458,27 +435,66 @@ export const getFriends = async (userId: number | string): Promise<UserProfile[]
     if (!auth.currentUser || !userId) return [];
 
     try {
-        // 1. 優先嘗試從 'Friendlist' 子集合讀取
-        const friendsRef = db.collection('users').doc(String(userId)).collection('Friendlist');
-        const snapshot = await friendsRef.get();
+        const uid = String(userId);
+        let friendPromises: Promise<UserProfile | null>[] = [];
 
-        if (!snapshot.empty) {
-            return snapshot.docs.map(doc => {
-                const data = doc.data();
-                // 假設子集合中已存有好友的基本資料快照
-                return {
-                    id: doc.id,
-                    name: data.name || data.displayName || 'Unknown',
-                    avatarUrl: data.avatarUrl || data.photoURL || '',
-                    level: data.level || 1,
-                    ...data
-                } as unknown as UserProfile;
-            });
+        // 1. 嘗試取得好友 ID 列表
+        // 優先查 Friendlist 子集合 (Source of Truth)
+        try {
+            const friendsRef = db.collection('users').doc(uid).collection('Friendlist');
+            const snapshot = await friendsRef.get();
+
+            if (!snapshot.empty) {
+                friendPromises = snapshot.docs.map(async (doc) => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        name: data.name || data.displayName || 'Unknown',
+                        avatarUrl: data.avatarUrl || data.photoURL || '',
+                        level: data.level || 1,
+                        ...data
+                    } as unknown as UserProfile;
+                });
+            }
+        } catch (e) {
+            console.warn("Failed to read Friendlist subcollection:", e);
         }
 
-        // 2. 子集合無資料時，嘗試呼叫 Cloud Function (相容舊資料)
-        const friends = await callFunction<undefined, UserProfile[]>('getFriends');
-        return Array.isArray(friends) ? friends : [];
+        // 2. 如果子集合沒資料 (舊資料或延遲)，嘗試讀取 User Doc 的 friends 陣列
+        if (friendPromises.length === 0) {
+             try {
+                const userDoc = await db.collection('users').doc(uid).get();
+                const friendsArray: string[] = userDoc.data()?.friends || [];
+                
+                if (friendsArray.length > 0) {
+                    friendPromises = friendsArray.map(async (fid) => {
+                        try {
+                            return await getUserProfile(fid);
+                        } catch { return null; }
+                    });
+                }
+             } catch (e) {
+                 console.warn("Failed to read user friends array:", e);
+             }
+        }
+
+        // 3. 若還是沒資料，嘗試 Cloud Function (舊版相容)
+        if (friendPromises.length === 0) {
+             try {
+                 const cfFriends = await callFunction<undefined, UserProfile[]>('getFriends');
+                 if (Array.isArray(cfFriends)) {
+                     friendPromises = cfFriends.map(f => Promise.resolve(f));
+                 }
+             } catch (e) {
+                 // Ignore CF error if not deployed or permissions issues
+             }
+        }
+
+        // 在 getFriends 最後強制等 1 秒再讀（解決 Firestore 延遲）
+        const friendsData = await Promise.all(friendPromises);
+        await new Promise(resolve => setTimeout(resolve, 1000));  // 強制等一下下
+        return friendsData.filter((f): f is UserProfile => Boolean(f));
+
     } catch (error) {
         console.warn("getFriends failed:", error);
         return [];
@@ -529,6 +545,7 @@ export const userApi = {
         }
 
         try {
+            // Attempt Cloud Function call first
             const result = await callFunction<any, { success: boolean }>(
                 'respondfriendrequest', 
                 { requesterId: String(requesterId), requestId: String(requestId), accept }
@@ -539,23 +556,89 @@ export const userApi = {
                 const profileStr = localStorage.getItem('userProfile');
                 if (profileStr) {
                     const profile: UserProfile = JSON.parse(profileStr);
-                    
                     if (accept) {
                         const currentFriends = profile.friends || [];
                         if (!currentFriends.some(f => String(f) === requesterId)) {
                             profile.friends = [...currentFriends, requesterId] as any;
                         }
                     }
-                    
                     localStorage.setItem('userProfile', JSON.stringify(profile));
                 }
             }
             return result;
 
         } catch (error) {
-            console.error("respondFriendRequest failed:", error);
-            throw error;
+            console.warn("respondFriendRequest Cloud Function failed, using Firestore fallback.", error);
+            
+            // FALLBACK: Client-side Firestore Operations
+            if (!auth.currentUser) throw new Error("Not authenticated");
+            const currentUid = auth.currentUser.uid;
+            
+            // Strategy 1: Try updating everything (might fail if strict rules on other user)
+            try {
+                const batch = db.batch();
+                const requestRef = db.collection('receivedFriendRequests').doc(requestId);
+                batch.update(requestRef, { status: accept ? 'accepted' : 'declined' });
+
+                if (accept) {
+                    // My Friendlist (Subcollection + Array)
+                    const myFriendRef = db.collection('users').doc(currentUid).collection('Friendlist').doc(requesterId);
+                    batch.set(myFriendRef, { timestamp: firebase.firestore.FieldValue.serverTimestamp(), friendId: requesterId }, { merge: true });
+                    const myUserRef = db.collection('users').doc(currentUid);
+                    batch.set(myUserRef, { friends: firebase.firestore.FieldValue.arrayUnion(requesterId) }, { merge: true });
+
+                    // Their Friendlist (Optimistic - might fail if permissions prevent it)
+                    const theirFriendRef = db.collection('users').doc(requesterId).collection('Friendlist').doc(currentUid);
+                    batch.set(theirFriendRef, { timestamp: firebase.firestore.FieldValue.serverTimestamp(), friendId: currentUid }, { merge: true });
+                    const theirUserRef = db.collection('users').doc(requesterId);
+                    batch.set(theirUserRef, { friends: firebase.firestore.FieldValue.arrayUnion(currentUid) }, { merge: true });
+                }
+
+                await batch.commit();
+            } catch (fullFallbackError) {
+                console.warn("Full fallback failed (likely permissions), attempting partial fallback (local user only).", fullFallbackError);
+                
+                // Strategy 2: Update only my data and the request status
+                const localBatch = db.batch();
+                const requestRef = db.collection('receivedFriendRequests').doc(requestId);
+                localBatch.update(requestRef, { status: accept ? 'accepted' : 'declined' });
+
+                if (accept) {
+                    const myFriendRef = db.collection('users').doc(currentUid).collection('Friendlist').doc(requesterId);
+                    localBatch.set(myFriendRef, { timestamp: firebase.firestore.FieldValue.serverTimestamp(), friendId: requesterId }, { merge: true });
+                    const myUserRef = db.collection('users').doc(currentUid);
+                    localBatch.set(myUserRef, { friends: firebase.firestore.FieldValue.arrayUnion(requesterId) }, { merge: true });
+                }
+                await localBatch.commit();
+            }
+            
+            // Update local cache manually after fallback success
+            if (accept) {
+                const profileStr = localStorage.getItem('userProfile');
+                if (profileStr) {
+                    const profile: UserProfile = JSON.parse(profileStr);
+                    const currentFriends = profile.friends || [];
+                    if (!currentFriends.some(f => String(f) === requesterId)) {
+                        profile.friends = [...currentFriends, requesterId] as any;
+                        localStorage.setItem('userProfile', JSON.stringify(profile));
+                    }
+                }
+            }
+            return { success: true };
         }
+    },
+
+    createPost: async (content: string, storeName: string, imageUrl?: string, visibility: string = 'public'): Promise<any> => {
+        // Sanitize the payload to ensure no 'undefined' values are sent.
+        // Firestore does not support 'undefined'. We use 'null' instead.
+        const payload = {
+            content: content,
+            storeName: storeName,
+            imageUrl: imageUrl === undefined ? null : imageUrl,
+            visibility: visibility,
+        };
+        
+        return await callFunction('createPost', payload);
     }
 };
 

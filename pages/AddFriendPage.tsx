@@ -133,17 +133,30 @@ const AddFriendPage: React.FC = () => {
     };
     
     const handleRespond = async (request: FriendRequest, accept: boolean) => {
-        // Optimistic update: onSnapshot will handle UI changes
         try {
+            // Optimistic UI update: Remove locally first
+            setPendingRequests(prev => prev.filter(r => r.id !== request.id));
+
             await userApi.respondFriendRequest(request.id, request.senderUid, accept);
+            
             if (accept) {
                 setSuccessMessage("已接受好友邀請！");
                 
+                // Update local profile
                 if (currentUser) {
                     const updatedFriends = [...(currentUser.friends || []), request.senderUid];
                     const updatedUser = { ...currentUser, friends: updatedFriends };
                     setCurrentUser(updatedUser);
                     localStorage.setItem('userProfile', JSON.stringify(updatedUser));
+                }
+
+                // 延遲刷新，等待 Firestore 同步 (解決延遲問題)
+                await new Promise(r => setTimeout(r, 800)); 
+                
+                // Reload fresh profile from DB
+                if (currentUser) {
+                    const freshProfile = await getUserProfile(currentUser.id);
+                    setCurrentUser(freshProfile);
                 }
 
                 setTimeout(() => setSuccessMessage(''), 3000);
@@ -271,7 +284,7 @@ const AddFriendPage: React.FC = () => {
                 }) : (
                      <div className="text-center p-10 text-brand-muted bg-brand-secondary rounded-lg border-2 border-brand-accent/10">
                         {searchTerm.trim() && !isLoading
-                            ? <p>找不到符合「{searchTerm}」的好友。</p>
+                            ? <p>找不到符合「{searchTerm}」的用戶。</p>
                             : <p>請輸入好友的 ID 來搜尋。</p>
                         }
                     </div>

@@ -1,35 +1,53 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom'; // Import ReactDOM for Portal
 import { Link } from 'react-router-dom';
 import { FeedItem, Comment, UserProfile, Store } from '../types';
 import { MapPinIcon, TrophyIcon, UserGroupIcon, UserPlusIcon } from './icons/NavIcons';
 import { HeartIcon, ChatBubbleIcon, PaperAirplaneIcon, GlobeIcon, LockClosedIcon, XIcon } from './icons/ActionIcons';
 import { formatDateTime } from '../constants';
 
-// Image Modal Component
+// Image Modal Component using a Portal
 const ImageModal: React.FC<{ src: string; isOpen: boolean; onClose: () => void }> = ({ src, isOpen, onClose }) => {
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.overflow = 'auto';
+        }
+        return () => {
+            document.body.style.overflow = 'auto';
+        };
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
-    return (
+    // Use ReactDOM.createPortal to render the modal at the root of the document
+    return ReactDOM.createPortal(
         <div 
-            className="fixed inset-0 z-[100] flex justify-center items-center p-4 backdrop-blur-md bg-black/40 animate-fade-in"
+            className="fixed inset-0 z-[100] flex justify-center items-center p-4 backdrop-blur-md animate-fade-in"
             onClick={onClose}
+            role="dialog"
+            aria-modal="true"
         >
-            <div className="relative max-w-full max-h-full">
-                <button 
-                    onClick={onClose} 
-                    className="absolute -top-10 right-0 text-white hover:text-brand-accent transition-colors p-2"
-                >
-                    <XIcon className="w-8 h-8 drop-shadow-lg" />
-                </button>
-                <img 
-                    src={src} 
-                    alt="Full view" 
-                    className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl cursor-zoom-out"
-                    onClick={(e) => e.stopPropagation()} // Prevent closing when clicking the image itself? Actually clicking image to close is also fine UX usually, but let's keep it distinct or allow both. Let's allow clicking image to do nothing, forcing user to click bg or X.
-                />
-            </div>
-        </div>
+            <button 
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onClose();
+                }} 
+                className="fixed top-4 right-4 text-white hover:text-brand-accent transition-colors p-2 z-[101]"
+                aria-label="Close image preview"
+            >
+                <XIcon className="w-8 h-8 drop-shadow-lg" />
+            </button>
+            
+            <img 
+                src={src} 
+                alt="Full view" 
+                className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl cursor-pointer"
+                onClick={(e) => e.stopPropagation()} // Prevent image click from closing modal if needed, but current behavior is click-to-close
+            />
+        </div>,
+        document.body
     );
 };
 
@@ -162,8 +180,9 @@ const FeedCard: React.FC<FeedCardProps> = ({ item, isLink = true, onToggleLike, 
                         <img 
                             src={item.imageUrl} 
                             alt="Feed post" 
-                            className="w-full h-auto max-h-80 rounded-lg object-cover border-2 border-brand-accent/10 cursor-zoom-in hover:opacity-95 transition-opacity"
+                            className="w-full h-auto max-h-80 rounded-lg object-contain bg-brand-primary border-2 border-brand-accent/10 cursor-zoom-in hover:opacity-95 transition-opacity"
                             onClick={() => setIsImageOpen(true)}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
                         />
                     </div>
                 )}
@@ -267,7 +286,7 @@ const FeedCard: React.FC<FeedCardProps> = ({ item, isLink = true, onToggleLike, 
                 )}
             </div>
 
-            {/* Full Screen Image Modal */}
+            {/* Full Screen Image Modal - Logic only, UI is portaled */}
             {item.imageUrl && (
                 <ImageModal 
                     src={item.imageUrl} 

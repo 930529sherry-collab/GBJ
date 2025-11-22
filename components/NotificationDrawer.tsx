@@ -92,14 +92,18 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
         if (respondingIds.includes(request.id)) return;
 
         setRespondingIds(prev => [...prev, request.id]);
+        
+        // Optimistic Update: Remove from local state immediately
+        setFriendRequests(prev => prev.filter(r => r.id !== request.id));
 
         try {
             // Call the updated API function, passing the request doc ID and the sender's UID
             await userApi.respondFriendRequest(request.id, request.senderUid, accept);
             
-            // onSnapshot will handle removing the request from the UI automatically
-            
             if (accept) {
+                // Wait for Firestore propagation
+                await new Promise(r => setTimeout(r, 800));
+
                 const myProfileData = localStorage.getItem('userProfile');
                 if (myProfileData) {
                     const myProfile: UserProfile = JSON.parse(myProfileData);

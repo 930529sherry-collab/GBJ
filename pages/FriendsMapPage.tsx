@@ -55,13 +55,15 @@ const FriendsMapPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger 
     }, [location, refreshTrigger]);
 
     const mapPins = useMemo(() => {
-        const pins: MapPin[] = friends.map(friend => ({
-            id: friend.id,
-            latlng: friend.latlng,
-            isFriend: true,
-            avatarUrl: friend.avatarUrl,
-            name: friend.name,
-        }));
+        const pins: MapPin[] = friends
+            .filter(f => f.latlng) // Guard against missing latlng
+            .map(friend => ({
+                id: friend.id,
+                latlng: friend.latlng,
+                isFriend: true,
+                avatarUrl: friend.avatarUrl,
+                name: friend.name,
+            }));
 
         if (userPosition && currentUser) {
             pins.unshift({

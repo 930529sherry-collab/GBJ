@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { JournalEntry, Store, UserProfile } from '../types';
-import { BackIcon, StarIcon } from '../components/icons/ActionIcons';
+import { BackIcon, StarIcon, XIcon } from '../components/icons/ActionIcons';
 import { MOCK_STORES, formatDate } from '../constants';
 
 const EditJournalEntryPage: React.FC = () => {
@@ -189,6 +189,27 @@ const EditJournalEntryPage: React.FC = () => {
                             className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-3 text-brand-light focus:ring-brand-accent focus:border-brand-accent" 
                             placeholder="https://example.com/image.png" 
                         />
+                         {imageUrl && (
+                            <div className="mt-4 relative">
+                                <p className="text-xs text-brand-muted mb-2">圖片預覽：</p>
+                                <img 
+                                    src={imageUrl} 
+                                    alt="Image Preview" 
+                                    className="w-full h-auto max-h-48 rounded-lg object-cover border-2 border-brand-accent/20"
+                                    onError={(e) => { 
+                                        e.currentTarget.style.display = 'none'; 
+                                    }} 
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={() => setImageUrl('')}
+                                    className="absolute top-8 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80"
+                                    aria-label="Clear image URL"
+                                >
+                                    <XIcon className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex gap-4 pt-4">

@@ -76,9 +76,15 @@ const FriendsListPage: React.FC = () => {
         e.stopPropagation();
         
         try {
+            // Optimistic UI update
+            setPendingRequests(prev => prev.filter(r => r.id !== request.id));
+
             await userApi.respondFriendRequest(request.id, request.senderUid, accept);
 
             if (accept && auth.currentUser) {
+                // 等待 Firestore 同步
+                await new Promise(r => setTimeout(r, 800));
+
                 // Re-fetch friends list to show the new friend
                 const friendProfiles = await getFriends(auth.currentUser.uid);
                 setFriends(friendProfiles);

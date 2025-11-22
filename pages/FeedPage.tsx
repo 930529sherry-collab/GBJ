@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MOCK_STORES } from '../constants';
@@ -306,32 +307,25 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
         if (!currentUser) return;
         setIsModalOpen(false);
 
-        const postData: Partial<FeedItem> = {
-            friendId: currentUser.id,
-            friendName: currentUser.name,
-            friendAvatarUrl: currentUser.avatarUrl,
-            type: 'check-in',
-            content: content,
-            storeName: store.name,
-            imageUrl: imageUrl,
-            authorId: currentUser.id,
-            visibility: visibility,
-        };
-        
         try {
-            const newPost = await feedApi.createPost(postData);
-            // Note: optimistic UI is handled by subscribeToFeed which picks up local storage changes
+            // 呼叫後端 API 建立貼文
+            // 我們傳遞 content, storeName, imageUrl, visibility
+            await userApi.createPost(content, store.name, imageUrl, visibility);
 
-            // Increment check-in count
+            // 更新本地狀態 (打卡數+1)
             const updatedCheckIns = (currentUser.checkIns || 0) + 1;
             const updatedProfile = { ...currentUser, checkIns: updatedCheckIns };
             setCurrentUser(updatedProfile);
             localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
-            if (!currentUser.isGuest) {
+            
+            if (!currentUser.isGuest && currentUser.id !== 0) {
                 await updateUserProfile(String(currentUser.id), { checkIns: updatedCheckIns });
-                // Instant Notification for User
+                // 發送即時通知
                 addNotificationToUser(String(currentUser.id), "發布成功：您的動態已發布。", "動態通知");
             }
+
+            // 強制重新整理列表以顯示新貼文
+            handleManualRefresh();
 
         } catch (e) {
             console.error("Post failed", e);

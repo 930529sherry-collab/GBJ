@@ -89,12 +89,14 @@ const MapPage: React.FC = () => {
     }, [location, userPosition]);
 
     const mapPins = useMemo(() => {
-        const pins: MapPin[] = stores.map(s => ({
-            id: s.id,
-            latlng: s.latlng,
-            isFriend: false,
-            name: s.name,
-        }));
+        const pins: MapPin[] = stores
+            .filter(s => s.latlng) // Guard against missing latlng
+            .map(s => ({
+                id: s.id,
+                latlng: s.latlng,
+                isFriend: false,
+                name: s.name,
+            }));
         if (userPosition && userProfile) {
             pins.unshift({
                 id: 'user-location',
