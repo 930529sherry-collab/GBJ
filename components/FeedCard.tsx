@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom'; // Import ReactDOM for Portal
 import { Link } from 'react-router-dom';
@@ -162,14 +163,21 @@ const FeedCard: React.FC<FeedCardProps> = ({ item, isLink = true, onToggleLike, 
                             </>
                         ) : (
                             <p className="text-brand-light">
-                                {item.content.split(item.storeName || item.missionTitle || '').map((part, index, arr) => 
-                                    index === arr.length - 1 ? part : (
-                                        <React.Fragment key={index}>
-                                            {part}
-                                            <span className="font-bold text-brand-accent">{item.storeName || item.missionTitle}</span>
-                                        </React.Fragment>
-                                    )
-                                )}
+                                {(() => {
+                                    const contentStr = item.content || '';
+                                    const separator = item.storeName || item.missionTitle;
+                                    
+                                    if (!separator) return contentStr;
+
+                                    return contentStr.split(separator).map((part, index, arr) => 
+                                        index === arr.length - 1 ? part : (
+                                            <React.Fragment key={index}>
+                                                {part}
+                                                <span className="font-bold text-brand-accent">{separator}</span>
+                                            </React.Fragment>
+                                        )
+                                    );
+                                })()}
                             </p>
                         )}
                     </div>

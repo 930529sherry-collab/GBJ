@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { XIcon, BellIcon } from './icons/ActionIcons';
@@ -31,8 +30,8 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
         }
 
         // Real-time listener for friend requests in root collection
-        const requestsRef = db.collection('receivedFriendRequests');
-        const q = requestsRef.where('toUid', '==', auth.currentUser.uid).where('status', '==', 'pending');
+        const requestsRef = db.collection('users').doc(auth.currentUser.uid).collection('receivedFriendRequests');
+        const q = requestsRef.where('status', '==', 'pending');
 
         const unsubscribe = q.onSnapshot((snapshot) => {
             const requests: FriendRequest[] = [];
@@ -89,16 +88,16 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
     };
 
     const handleRespond = async (request: FriendRequest, accept: boolean) => {
-        if (respondingIds.includes(request.id)) return;
+        if (respondingIds.includes(request.senderUid)) return;
 
-        setRespondingIds(prev => [...prev, request.id]);
+        setRespondingIds(prev => [...prev, request.senderUid]);
         
         // Optimistic Update: Remove from local state immediately
-        setFriendRequests(prev => prev.filter(r => r.id !== request.id));
+        setFriendRequests(prev => prev.filter(r => r.senderUid !== request.senderUid));
 
         try {
-            // Call the updated API function, passing the request doc ID and the sender's UID
-            await userApi.respondFriendRequest(request.id, request.senderUid, accept);
+            // Call the updated API function
+            await userApi.respondFriendRequest(request.senderUid, accept);
             
             if (accept) {
                 // Wait for Firestore propagation
@@ -125,7 +124,7 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
             console.error("Responding to friend request failed:", error);
             alert("操作失敗，請稍後再試。");
         } finally {
-            setRespondingIds(prev => prev.filter(id => id !== request.id));
+            setRespondingIds(prev => prev.filter(id => id !== request.senderUid));
         }
     };
 
@@ -203,7 +202,7 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
                                     )}
                                     
                                     {friendRequests.map(req => {
-                                        const isResponding = respondingIds.includes(req.id);
+                                        const isResponding = respondingIds.includes(req.senderUid);
                                         return (
                                             <div key={req.id} className="bg-brand-primary p-3 rounded-lg border border-brand-accent/20 shadow-sm">
                                                 <div className="flex items-center gap-3 mb-3">

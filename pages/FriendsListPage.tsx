@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { UserProfile, FriendRequest } from '../types';
@@ -27,9 +26,9 @@ const FriendsListPage: React.FC = () => {
                     const friendProfiles = await getFriends(user.uid);
                     setFriends(friendProfiles);
 
-                    // Set up listener for friend requests in receivedFriendRequests root collection
-                    const requestsRef = db.collection('receivedFriendRequests');
-                    const q = requestsRef.where('toUid', '==', user.uid).where('status', '==', 'pending');
+                    // Set up listener for friend requests in receivedFriendRequests subcollection
+                    const requestsRef = db.collection('users').doc(user.uid).collection('receivedFriendRequests');
+                    const q = requestsRef.where('status', '==', 'pending');
                     
                     unsubscribeRequests = q.onSnapshot((snapshot) => {
                         const requests: FriendRequest[] = snapshot.docs.map(doc => {
@@ -79,7 +78,7 @@ const FriendsListPage: React.FC = () => {
             // Optimistic UI update
             setPendingRequests(prev => prev.filter(r => r.id !== request.id));
 
-            await userApi.respondFriendRequest(request.id, request.senderUid, accept);
+            await userApi.respondFriendRequest(request.senderUid, accept);
 
             if (accept && auth.currentUser) {
                 // 等待 Firestore 同步

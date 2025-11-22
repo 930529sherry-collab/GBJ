@@ -1,8 +1,3 @@
-
-
-
-
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MOCK_USER_PROFILE, WELCOME_COUPONS, MOCK_USERS } from '../constants';
@@ -209,9 +204,17 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                             navigate('/');
                         }, 1500);
 
-                    } catch (backendError) {
+                    } catch (backendError: any) {
                         console.error("後端建立失敗:", backendError);
-                        setError('帳號建立時發生錯誤，請聯繫客服或稍後再試。');
+                        const errorMessage = (backendError.message || String(backendError)).toLowerCase();
+                        
+                        // Check for specific error from our updated API
+                        if (errorMessage.includes("此暱稱已被使用")) {
+                            setError('此暱稱已被使用，請換一個。');
+                        } else {
+                            setError('帳號建立時發生錯誤，請聯繫客服或稍後再試。');
+                        }
+                        
                         // 刪除 Auth 帳號以保持一致性
                         userCredential.user.delete().catch(err => console.error("清除殘留帳號失敗", err));
                     }

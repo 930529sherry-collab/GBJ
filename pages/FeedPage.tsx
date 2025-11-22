@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MOCK_STORES } from '../constants';
@@ -112,6 +110,8 @@ const CheckInModal: React.FC<{
         const store = stores.find(s => s.id === selectedStoreId);
         if (store) {
             onPost(content, store, imagePreview || undefined, visibility);
+        } else {
+            alert("請選擇一個店家！");
         }
     };
 
@@ -310,9 +310,9 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
 
         try {
             // 呼叫後端 API 建立貼文
-            // 我們傳遞 content, storeName, imageUrl, visibility
-            // 後端會自己去抓正確名字
-            await userApi.createPost(content, store.name, imageUrl, visibility);
+            // 使用 userApi.createPost，它會負責處理空白內容問題 (後端不接受空字串)
+            // 傳入順序：(內容, 店家名稱, 圖片)
+            await userApi.createPost(content, store.name, imageUrl);
 
             // 更新本地狀態 (打卡數+1)
             const updatedCheckIns = (currentUser.checkIns || 0) + 1;
@@ -329,9 +329,10 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
             // 強制重新整理列表以顯示新貼文
             handleManualRefresh();
 
-        } catch (e) {
+        } catch (e: any) {
             console.error("Post failed", e);
-            alert("發布失敗，請稍後再試");
+            const errorMsg = e.message || "請稍後再試";
+            alert(`發布失敗：${errorMsg}`);
         }
     };
 
@@ -351,7 +352,7 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
             
             const newComment: Comment = {
                 id: `local-${Date.now()}`,
-                authorName: currentUser.name,
+                authorName: currentUser.displayName || currentUser.name || '用戶',
                 authorAvatarUrl: currentUser.avatarUrl,
                 text: commentText,
                 timestamp: new Date().toISOString(),

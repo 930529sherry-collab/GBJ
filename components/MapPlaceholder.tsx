@@ -1,6 +1,3 @@
-
-
-
 import React, { useEffect, useRef } from 'react';
 import * as L from 'leaflet';
 
@@ -53,7 +50,11 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
 
     return () => {
       if (mapRef.current) {
-        mapRef.current.remove();
+        try {
+          mapRef.current.remove();
+        } catch (e) {
+            console.warn("Map remove failed, likely already gone:", e);
+        }
         mapRef.current = null;
         markersLayerRef.current = null;
       }
@@ -76,7 +77,12 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
     if (!map || !markersLayer) return;
 
     // Use clearLayers() instead of removing the group to prevent '_leaflet_pos' errors
-    markersLayer.clearLayers();
+    try {
+      markersLayer.clearLayers();
+    } catch (e) {
+      console.warn("Could not clear layers, map might be unmounting.", e);
+      return; // Stop execution if we can't clear
+    }
     
     if (pins.length === 0) return;
 

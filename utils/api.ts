@@ -1,7 +1,4 @@
-
-
 import firebase, { db, functions, auth } from '../firebase/config';
-// Removed modular import to fix SyntaxError: import { httpsCallableFromUrl } from 'firebase/functions';
 import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest } from '../types';
 import { MOCK_STORES, WELCOME_COUPONS } from '../constants';
 
@@ -31,8 +28,7 @@ const callFunction = async <T, R>(functionName: string, data?: T): Promise<R> =>
                                 errorMsg.includes('already pending') ||
                                 errorMsg.includes('not found') || 
                                 errorMsg.includes('already processed') ||
-                                errorMsg.includes('display name already taken') ||
-                                (errorMsg.includes('internal') && functionName === 'respondfriendrequest'); // Ignore internal error for this function as we have fallback
+                                errorMsg.includes('display name already taken');
 
         if (!isExpectedError) {
             console.error(`Cloud Function Error [${functionName}]:`, error);
@@ -127,7 +123,6 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
             let friendsList = data?.friends || [];
 
             // Sync with Friendlist subcollection (Source of Truth)
-            // If the user has migrated to Friendlist subcollection, we use that.
             try {
                 const friendsSnapshot = await userDocRef.collection('Friendlist').get();
                 if (!friendsSnapshot.empty) {
@@ -137,7 +132,6 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
                 console.warn("Failed to fetch Friendlist subcollection", err);
             }
 
-            // Ensure arrays exist to prevent "undefined" errors
             return { 
                 id: userDocSnap.id, 
                 ...data,
@@ -147,10 +141,8 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
             } as UserProfile;
         }
         
-        // Removed fallback to mock users to prevent showing non-existent profiles
         throw new Error("User profile not found");
     } catch (error: any) {
-        // Graceful fallback for permission errors (e.g. during auth transitions or rules issues)
         const errorMsg = error.message || String(error);
         if (error.code === 'permission-denied' || errorMsg.includes('Missing or insufficient permissions') || errorMsg.includes('permission-denied')) {
              console.warn("getUserProfile: Permission denied, returning basic profile.");
@@ -175,39 +167,26 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
     }
 };
 
-/**
- * 建立使用者 (優先使用 Cloud Function，並處理名稱重複問題)
- */
 export const createUserProfileInDB = async (firebaseUser: firebase.User, displayName: string, photoURL?: string): Promise<UserProfile> => {
-    
-    // Inner helper to handle cloud function call with potential retry
-    const createWithCloudFunction = async (name: string, retry: boolean): Promise<UserProfile> => {
-        try {
-            return await callFunction('createUser', {
-                uid: firebaseUser.uid,
-                displayName: name,
-                email: firebaseUser.email,
-                avatarUrl: photoURL,
-                missions: [] // 傳入初始任務
-            });
-        } catch (e: any) {
-            const errorMessage = (e.message || String(e)).toLowerCase();
-            // Handle name collision by retrying with suffix
-            if (retry && errorMessage.includes("display name already taken")) {
-                const newName = `${displayName}_${Math.floor(1000 + Math.random() * 9000)}`;
-                console.log(`Display name '${name}' taken, retrying with '${newName}'...`);
-                return createWithCloudFunction(newName, false); // Retry once
-            }
-            throw e;
-        }
-    };
-
     try {
-        return await createWithCloudFunction(displayName, true);
-    } catch (e) {
+        // Call cloud function without retry logic
+        return await callFunction('createUser', {
+            uid: firebaseUser.uid,
+            displayName: displayName,
+            email: firebaseUser.email,
+            avatarUrl: photoURL,
+            missions: [] 
+        });
+    } catch (e: any) {
+        // If it fails, check for specific "name taken" error
+        const errorMessage = (e.message || String(e)).toLowerCase();
+        if (errorMessage.includes("display name already taken")) {
+            // Re-throw the specific error for the UI to handle
+            throw new Error("此暱稱已被使用，請換一個。");
+        }
+
+        // For other errors, fall back to direct creation
         console.warn("Cloud function createUser failed, falling back to direct creation.", e);
-        
-        // Fallback: Direct create if Cloud Function fails/not deployed or retry failed
         const newProfile: UserProfile = {
             id: firebaseUser.uid,
             name: displayName,
@@ -233,13 +212,11 @@ export const createUserProfileInDB = async (firebaseUser: firebase.User, display
     }
 };
 
+
 export const createFallbackUserProfile = async (firebaseUser: firebase.User, displayName: string, photoURL?: string): Promise<UserProfile> => {
     return createUserProfileInDB(firebaseUser, displayName, photoURL);
 };
 
-/**
- * 更新使用者資料
- */
 export const updateUserProfile = async (uid: string, updates: Partial<UserProfile>): Promise<void> => {
     if (!uid || !db) return;
     const userDocRef = db.collection("users").doc(uid);
@@ -345,7 +322,6 @@ export const checkAndBackfillWelcomeNotifications = async (userId: string | numb
 
 export const syncUserStats = async (userId: string | number): Promise<void> => {
     if (!userId) return;
-    // No heavy sync needed for now
 };
 
 
@@ -367,11 +343,9 @@ export const getStores = async (): Promise<Store[]> => {
              const data = doc.data();
              return { ...data, id: typeof data.id === 'number' ? data.id : Number(doc.id) } as Store;
         });
-        // Filter out stores without valid latlng
         return stores.filter(s => s.latlng && typeof s.latlng.lat === 'number' && typeof s.latlng.lng === 'number');
 
     } catch (e: any) {
-        // Handle missing permissions gracefully by using mock data
         const errorMsg = e.message || String(e);
         if (e.code === 'permission-denied' || errorMsg.includes('Missing or insufficient permissions') || errorMsg.includes('permission-denied')) {
             console.warn("getStores: Permission denied (using mock data).");
@@ -399,18 +373,16 @@ export const storeApi = {
 export const searchUsers = async (queryTerm: string): Promise<SearchableUser[]> => {
     if (!queryTerm?.trim()) return [];
     
-    // Cloud Search Only (Mock users removed)
     try {
-        // If guest, this will throw and go to catch, returning empty
         const cloudResults = await callFunction<any, any[]>('searchUsers', { query: queryTerm });
         
         const results: SearchableUser[] = [];
         if (Array.isArray(cloudResults)) {
             cloudResults.forEach(cUser => {
-                // Explicitly filter out mock-like IDs if they happen to sneak in
-                if (String(cUser.id).length < 5 && !isNaN(Number(cUser.id))) return;
+                // Strictly filter out mock-like IDs (length < 5)
+                const uidStr = String(cUser.id || cUser.uid);
+                if (uidStr.length < 5) return;
 
-                // Ensure we handle potential missing fields from raw cloud data
                 const safeUser: SearchableUser = {
                     id: cUser.id || cUser.uid,
                     name: cUser.displayName || cUser.name || '用戶',
@@ -423,14 +395,10 @@ export const searchUsers = async (queryTerm: string): Promise<SearchableUser[]> 
         }
         return results;
     } catch (e) {
-        // Suppress error for guests or network issues
         return []; 
     }
 };
 
-/**
- * 取得好友列表
- */
 export const getFriends = async (userId: number | string): Promise<UserProfile[]> => {
     if (!auth.currentUser || !userId) return [];
 
@@ -438,8 +406,6 @@ export const getFriends = async (userId: number | string): Promise<UserProfile[]
         const uid = String(userId);
         let friendPromises: Promise<UserProfile | null>[] = [];
 
-        // 1. 嘗試取得好友 ID 列表
-        // 優先查 Friendlist 子集合 (Source of Truth)
         try {
             const friendsRef = db.collection('users').doc(uid).collection('Friendlist');
             const snapshot = await friendsRef.get();
@@ -460,7 +426,6 @@ export const getFriends = async (userId: number | string): Promise<UserProfile[]
             console.warn("Failed to read Friendlist subcollection:", e);
         }
 
-        // 2. 如果子集合沒資料 (舊資料或延遲)，嘗試讀取 User Doc 的 friends 陣列
         if (friendPromises.length === 0) {
              try {
                 const userDoc = await db.collection('users').doc(uid).get();
@@ -478,7 +443,6 @@ export const getFriends = async (userId: number | string): Promise<UserProfile[]
              }
         }
 
-        // 3. 若還是沒資料，嘗試 Cloud Function (舊版相容)
         if (friendPromises.length === 0) {
              try {
                  const cfFriends = await callFunction<undefined, UserProfile[]>('getFriends');
@@ -486,13 +450,11 @@ export const getFriends = async (userId: number | string): Promise<UserProfile[]
                      friendPromises = cfFriends.map(f => Promise.resolve(f));
                  }
              } catch (e) {
-                 // Ignore CF error if not deployed or permissions issues
              }
         }
 
-        // 在 getFriends 最後強制等 1 秒再讀（解決 Firestore 延遲）
         const friendsData = await Promise.all(friendPromises);
-        await new Promise(resolve => setTimeout(resolve, 1000));  // 強制等一下下
+        await new Promise(resolve => setTimeout(resolve, 1000));
         return friendsData.filter((f): f is UserProfile => Boolean(f));
 
     } catch (error) {
@@ -504,54 +466,54 @@ export const getFriends = async (userId: number | string): Promise<UserProfile[]
 export const userApi = {
     searchUsers,
     getFriends,
+    
     sendFriendRequest: async (friendId: string | number): Promise<{ success: boolean }> => {
         try {
-            // Primary method: call Cloud Function
+            // Priority 1: Try Cloud Function
+            console.log(`Attempting to send friend request to ${friendId} via Cloud Function...`);
             return await callFunction<any, { success: boolean }>('sendFriendRequest', { friendId: String(friendId) });
         } catch (error) {
+            // Priority 2: Fallback to direct client-side write if function fails
             console.warn("sendFriendRequest Cloud Function failed, attempting client-side fallback.", error);
-            // Fallback method: direct Firestore write
             try {
-                const profileStr = localStorage.getItem('userProfile');
-                if (!profileStr) throw new Error("Current user profile not found for fallback.");
-                const currentUser: UserProfile = JSON.parse(profileStr);
-
+                if (!auth.currentUser) throw new Error("Not authenticated for fallback.");
+                
+                const currentUser = auth.currentUser;
                 const requestDoc = {
-                    toUid: String(friendId), // Added for root collection filter
-                    senderUid: String(currentUser.id),
-                    senderName: currentUser.displayName || currentUser.name || '用戶',
-                    senderAvatarUrl: currentUser.avatarUrl,
+                    fromUid: currentUser.uid,
+                    from: currentUser.displayName || '一位用戶',
                     status: 'pending',
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 };
 
-                // Update to use root collection as requested
-                const targetUserRequestsRef = db.collection('receivedFriendRequests');
-                await targetUserRequestsRef.add(requestDoc);
+                // Correct Path: Write to the TARGET user's subcollection
+                const targetUserRequestRef = db.collection('users').doc(String(friendId)).collection('receivedFriendRequests').doc(currentUser.uid);
+                
+                // Use set with doc(uid) to prevent duplicates
+                await targetUserRequestRef.set(requestDoc);
+                console.log("Client-side fallback for sendFriendRequest succeeded.");
 
-                return { success: true }; // Return success on fallback success
+                return { success: true };
             } catch (fallbackError) {
                 console.error("Client-side fallback for sendFriendRequest also failed:", fallbackError);
-                throw fallbackError; // Re-throw the fallback error
+                throw fallbackError;
             }
         }
     },
     
-    respondFriendRequest: async (requestId: string, requesterId: string, accept: boolean): Promise<{ success: boolean }> => {
-        if (!requesterId || !requestId) {
-            const error = new Error("無效的邀請：缺少邀請者或請求 ID。");
+    respondFriendRequest: async (requesterId: string, accept: boolean): Promise<{ success: boolean }> => {
+        if (!requesterId) {
+            const error = new Error("無效的邀請：缺少邀請者 ID。");
             console.error(error);
             throw error;
         }
 
         try {
-            // Attempt Cloud Function call first
             const result = await callFunction<any, { success: boolean }>(
                 'respondfriendrequest', 
-                { requesterId: String(requesterId), requestId: String(requestId), accept }
+                { requesterId: String(requesterId), accept }
             );
 
-            // Update local cache if successful
             if (result && result.success && auth.currentUser) {
                 const profileStr = localStorage.getItem('userProfile');
                 if (profileStr) {
@@ -568,87 +530,60 @@ export const userApi = {
             return result;
 
         } catch (error) {
-            console.warn("respondFriendRequest Cloud Function failed, using Firestore fallback.", error);
-            
-            // FALLBACK: Client-side Firestore Operations
-            if (!auth.currentUser) throw new Error("Not authenticated");
-            const currentUid = auth.currentUser.uid;
-            
-            // Strategy 1: Try updating everything (might fail if strict rules on other user)
-            try {
-                const batch = db.batch();
-                const requestRef = db.collection('receivedFriendRequests').doc(requestId);
-                batch.update(requestRef, { status: accept ? 'accepted' : 'declined' });
-
-                if (accept) {
-                    // My Friendlist (Subcollection + Array)
-                    const myFriendRef = db.collection('users').doc(currentUid).collection('Friendlist').doc(requesterId);
-                    batch.set(myFriendRef, { timestamp: firebase.firestore.FieldValue.serverTimestamp(), friendId: requesterId }, { merge: true });
-                    const myUserRef = db.collection('users').doc(currentUid);
-                    batch.set(myUserRef, { friends: firebase.firestore.FieldValue.arrayUnion(requesterId) }, { merge: true });
-
-                    // Their Friendlist (Optimistic - might fail if permissions prevent it)
-                    const theirFriendRef = db.collection('users').doc(requesterId).collection('Friendlist').doc(currentUid);
-                    batch.set(theirFriendRef, { timestamp: firebase.firestore.FieldValue.serverTimestamp(), friendId: currentUid }, { merge: true });
-                    const theirUserRef = db.collection('users').doc(requesterId);
-                    batch.set(theirUserRef, { friends: firebase.firestore.FieldValue.arrayUnion(currentUid) }, { merge: true });
-                }
-
-                await batch.commit();
-            } catch (fullFallbackError) {
-                console.warn("Full fallback failed (likely permissions), attempting partial fallback (local user only).", fullFallbackError);
-                
-                // Strategy 2: Update only my data and the request status
-                const localBatch = db.batch();
-                const requestRef = db.collection('receivedFriendRequests').doc(requestId);
-                localBatch.update(requestRef, { status: accept ? 'accepted' : 'declined' });
-
-                if (accept) {
-                    const myFriendRef = db.collection('users').doc(currentUid).collection('Friendlist').doc(requesterId);
-                    localBatch.set(myFriendRef, { timestamp: firebase.firestore.FieldValue.serverTimestamp(), friendId: requesterId }, { merge: true });
-                    const myUserRef = db.collection('users').doc(currentUid);
-                    localBatch.set(myUserRef, { friends: firebase.firestore.FieldValue.arrayUnion(requesterId) }, { merge: true });
-                }
-                await localBatch.commit();
-            }
-            
-            // Update local cache manually after fallback success
-            if (accept) {
-                const profileStr = localStorage.getItem('userProfile');
-                if (profileStr) {
-                    const profile: UserProfile = JSON.parse(profileStr);
-                    const currentFriends = profile.friends || [];
-                    if (!currentFriends.some(f => String(f) === requesterId)) {
-                        profile.friends = [...currentFriends, requesterId] as any;
-                        localStorage.setItem('userProfile', JSON.stringify(profile));
-                    }
-                }
-            }
-            return { success: true };
+            console.error("respondFriendRequest failed:", error);
+            throw error;
         }
     },
 
-    createPost: async (content: string, storeName: string, imageUrl?: string, visibility: string = 'public'): Promise<any> => {
-        // Sanitize the payload to ensure no 'undefined' values are sent.
-        // Firestore does not support 'undefined'. We use 'null' instead.
-        const payload = {
-            content: content,
-            storeName: storeName,
-            imageUrl: imageUrl === undefined ? null : imageUrl,
-            visibility: visibility,
-        };
+    // ✅ 修正後的 createPost using fetch to bypass SDK version issues
+    createPost: async (content: string, storeName: string | undefined, imageUrl?: string) => {
+        const user = auth.currentUser;
+        if (!user) {
+            throw new Error("請先登入");
+        }
         
-        return await callFunction('createPost', payload);
-    }
+        // Sanitize imageUrl to be null if undefined
+        const finalImageUrl = imageUrl || null;
+
+        // Auto-generate content if empty and storeName exists
+        let finalText = content?.trim() || "";
+        if (!finalText && storeName) {
+            finalText = `在 ${storeName} 打卡！`;
+        }
+
+        // 2. 取得 ID Token
+        const token = await user.getIdToken();
+
+        // 3. Directly use fetch to call the API
+        const response = await fetch("https://createpost-47xkuwj3aa-uc.a.run.app", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                data: {
+                    text: finalText,
+                    imageUrl: finalImageUrl
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            console.error("Create Post API Error:", errData);
+            throw new Error(errData.error?.message || `發布失敗 (${response.status})`);
+        }
+
+        const resData = await response.json();
+        return resData.result;
+    },
 };
 
 // ============================================================================
 // 5. 動態牆 (Feed & Posts)
 // ============================================================================
 
-/**
- * 取得動態牆
- */
 export const getFeedItems = async (): Promise<FeedItem[]> => {
     try {
         const feedItems = await callFunction<undefined, FeedItem[]>('getFeed');
@@ -659,27 +594,27 @@ export const getFeedItems = async (): Promise<FeedItem[]> => {
     }
 };
 
-/**
- * 取得特定使用者的動態
- */
 export const getUserFeed = async (userId: string | number): Promise<FeedItem[]> => {
     if (!userId) return [];
     
     try {
         const q = db.collection("posts")
-            .where("friendId", "==", userId)
+            .where("authorId", "==", String(userId))
             .orderBy("timestamp", "desc");
         const snapshot = await q.get();
         
         return snapshot.docs.map(doc => {
             const data = doc.data();
-            const likedBy = data.likedBy || [];
+            // Field Translation
             return {
                 id: doc.id,
                 ...data,
+                content: data.text || data.content || "",
+                friendName: data.authorName || data.friendName || "未知用戶",
+                friendAvatarUrl: data.authorAvatar || data.friendAvatarUrl || "",
+                friendId: data.authorId || data.friendId,
                 timestamp: convertTimestamp(data.timestamp),
                 likes: data.likes || 0,
-                likedBy: likedBy,
                 comments: data.comments || [],
                 clientSideId: data.clientSideId 
             } as FeedItem;
@@ -691,9 +626,6 @@ export const getUserFeed = async (userId: string | number): Promise<FeedItem[]> 
     }
 };
 
-/**
- * 訂閱動態牆
- */
 export const subscribeToFeed = (currentUserId: string, callback: (items: FeedItem[]) => void) => {
     const q = db.collection("posts")
         .orderBy("timestamp", "desc")
@@ -704,9 +636,14 @@ export const subscribeToFeed = (currentUserId: string, callback: (items: FeedIte
             const data = doc.data();
             const likedBy = data.likedBy || [];
             
+            // Field Translation
             return {
                 id: doc.id,
                 ...data,
+                content: data.text || data.content || "",
+                friendName: data.authorName || data.friendName || "未知用戶",
+                friendAvatarUrl: data.authorAvatar || data.friendAvatarUrl || "",
+                friendId: data.authorId || data.friendId,
                 timestamp: convertTimestamp(data.timestamp),
                 likes: likedBy.length,
                 isLiked: likedBy.includes(currentUserId),
@@ -717,11 +654,10 @@ export const subscribeToFeed = (currentUserId: string, callback: (items: FeedIte
         });
         callback(items);
     }, (error) => {
-        // Gracefully handle permission errors to prevent app crash
         const errorMsg = error.message || String(error);
         if (error.code === 'permission-denied' || errorMsg.includes('Missing or insufficient permissions') || errorMsg.includes('permission-denied')) {
              console.warn("Feed subscription permission denied. Using empty feed.");
-             callback([]); // Return empty list to stop loading state
+             callback([]); 
         } else {
              console.error("Feed subscription error:", error);
         }
@@ -732,9 +668,6 @@ export const feedApi = {
     getFeed: getFeedItems,
     getUserFeed,
 
-    /**
-     * 建立貼文
-     */
     createPost: async (postData: any): Promise<FeedItem> => {
         if (!db) throw new Error("Database not initialized");
 
@@ -759,7 +692,6 @@ export const feedApi = {
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         };
 
-        // 清理 undefined 欄位
         const cleanedPost = Object.fromEntries(
             Object.entries(newPost).filter(([_, v]) => v !== undefined)
         );
@@ -778,9 +710,6 @@ export const feedApi = {
         } as FeedItem;
     },
 
-    /**
-     * 按讚 / 取消讚
-     */
     toggleLike: async (postId: string | number, userId: string | number, isCurrentlyLiked: boolean) => {
         if (!postId) return;
         const postRef = db.collection("posts").doc(String(postId));
@@ -802,9 +731,6 @@ export const feedApi = {
         }
     },
 
-    /**
-     * 新增留言
-     */
     addComment: async (postId: string | number, comment: Comment) => {
         if (!db || !auth.currentUser) return { success: false };
         

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchableUser, UserProfile, FriendRequest } from '../types';
@@ -34,24 +33,22 @@ const AddFriendPage: React.FC = () => {
         let unsubscribeRequests = () => {};
         if (auth.currentUser) {
             setLoadingRequests(true);
-            // 指定到 receivedFriendRequests 根集合
-            const requestsRef = db.collection('receivedFriendRequests');
-            const q = requestsRef.where('toUid', '==', auth.currentUser.uid).where('status', '==', 'pending');
+            const requestsRef = db.collection('users').doc(auth.currentUser.uid).collection('receivedFriendRequests');
+            const q = requestsRef.where('status', '==', 'pending');
 
             unsubscribeRequests = q.onSnapshot((snapshot) => {
                 const requests: FriendRequest[] = [];
                 snapshot.forEach(doc => {
                     const data = doc.data();
-                    // 3. ★重要：資料庫欄位對應修正★
-                    // 自動相容 from/fromUid (後端) 與 senderName/senderUid (前端)
+                    // Field mapping compatibility
                     requests.push({
                         id: doc.id,
-                        senderUid: data.fromUid || data.senderUid, 
-                        senderName: data.from || data.senderName,   
+                        senderUid: data.fromUid || data.senderUid,
+                        senderName: data.from || data.senderName,
                         senderAvatarUrl: data.senderAvatarUrl || '',
                         status: data.status || 'pending',
                         timestamp: data.timestamp,
-                        ...data // 確保其他欄位也存在
+                        ...data
                     } as FriendRequest);
                 });
                 setPendingRequests(requests);
@@ -137,7 +134,7 @@ const AddFriendPage: React.FC = () => {
             // Optimistic UI update: Remove locally first
             setPendingRequests(prev => prev.filter(r => r.id !== request.id));
 
-            await userApi.respondFriendRequest(request.id, request.senderUid, accept);
+            await userApi.respondFriendRequest(request.senderUid, accept);
             
             if (accept) {
                 setSuccessMessage("已接受好友邀請！");

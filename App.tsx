@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation, Link, Navigate, useNavigate } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
@@ -129,8 +131,8 @@ const AppLayout: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   // Real-time listener for friend requests to control red dot
   useEffect(() => {
     if (auth.currentUser) {
-        const requestsRef = db.collection('receivedFriendRequests');
-        const q = requestsRef.where('toUid', '==', auth.currentUser.uid).where('status', '==', 'pending');
+        const requestsRef = db.collection('users').doc(auth.currentUser.uid).collection('receivedFriendRequests');
+        const q = requestsRef.where('status', '==', 'pending');
         const unsubscribe = q.onSnapshot((snapshot) => {
             setHasPendingRequests(!snapshot.empty);
         }, (error) => {

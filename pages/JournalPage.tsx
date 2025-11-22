@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { JournalEntry } from '../types';
@@ -33,9 +34,9 @@ const JournalPage: React.FC = () => {
     return (
         <div className="animate-fade-in space-y-6">
             <div className="flex items-center justify-between">
-                <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-brand-muted hover:text-brand-light transition-colors font-semibold">
+                <button onClick={() => navigate('/profile')} className="flex items-center gap-2 text-brand-muted hover:text-brand-light transition-colors font-semibold">
                     <BackIcon />
-                    <span>返回</span>
+                    <span>返回個人檔案</span>
                 </button>
                 <button 
                     onClick={handleAddClick} 
