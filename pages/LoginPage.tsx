@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MOCK_USER_PROFILE, WELCOME_COUPONS, MOCK_USERS, INITIAL_MISSIONS } from '../constants';
@@ -78,6 +80,7 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
     };
 
     const handleGuestLogin = () => {
+        // FIX: Replaced non-existent 'completedMissionIds' with the required 'missions' property and added 'displayName'.
         const guestProfile: UserProfile = {
             id: 0,
             name: '訪客',
@@ -169,6 +172,12 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                         const newProfile = await createUserProfileInDB(userCredential.user, name, finalAvatarUrl);
                         localStorage.setItem('userProfile', JSON.stringify(newProfile));
                         
+                        const existingCoupons = JSON.parse(localStorage.getItem('userCoupons') || '[]');
+                        const uniqueNewCoupons = WELCOME_COUPONS.filter(newC => 
+                            !existingCoupons.some((existingC: Coupon) => existingC.title === newC.title)
+                        );
+                        localStorage.setItem('userCoupons', JSON.stringify([...uniqueNewCoupons, ...existingCoupons]));
+                        
                         setSuccessMessage('註冊成功！正在登入...');
                         
                         setTimeout(() => {
@@ -218,9 +227,7 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
             }
             setError(msg);
         } finally {
-            if (mode !== 'register' || error) {
-                setIsSubmitting(false);
-            }
+            setIsSubmitting(false);
         }
     };
     
@@ -337,7 +344,7 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                                 {error && <p className="text-red-500 text-sm text-center font-medium">{error}</p>}
                                 {successMessage && <p className="text-green-500 text-sm text-center">{successMessage}</p>}
                                 
-                                <button type="submit" disabled={isSubmitting || !!successMessage} className="w-full bg-brand-accent text-brand-primary font-bold py-3 px-4 rounded-lg hover:bg-opacity-80 transition-colors disabled:bg-brand-muted">
+                                <button type="submit" disabled={isSubmitting} className="w-full bg-brand-accent text-brand-primary font-bold py-3 px-4 rounded-lg hover:bg-opacity-80 transition-colors disabled:bg-brand-muted">
                                     {isSubmitting ? '處理中...' : (mode === 'login' ? '登入' : '註冊')}
                                 </button>
                             </form>
