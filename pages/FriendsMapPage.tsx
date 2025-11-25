@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Friend, UserProfile } from '../types';
@@ -7,6 +6,7 @@ import MapPlaceholder from '../components/MapPlaceholder';
 import { useGeolocation } from '../context/GeolocationContext';
 import { getFriends } from '../utils/api';
 import { useGuestGuard } from '../context/GuestGuardContext';
+import { getDistance } from '../utils/distance';
 
 interface MapPin {
     id: number | string;
@@ -15,6 +15,7 @@ interface MapPin {
     isUser?: boolean;
     avatarUrl?: string;
     name?: string;
+    onlineStatus?: boolean;
 }
 
 const FriendsMapPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => {
@@ -35,15 +36,33 @@ const FriendsMapPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger 
                 setCurrentUser(currentUserProfile);
                 try {
                     const friendProfiles = await getFriends(currentUserProfile.id);
-                    const friendMapData: Friend[] = friendProfiles.map(profile => ({
-                        id: profile.id,
-                        name: profile.name,
-                        avatarUrl: profile.avatarUrl,
-                        lastCheckIn: '未知',
-                        position: { top: '0', left: '0' }, 
-                        latlng: profile.latlng,
-                    }));
-                    setFriends(friendMapData);
+
+                    const friendsWithDetails: Friend[] = friendProfiles.map(profile => {
+                        const distance = userPosition && profile.latlng 
+                            ? getDistance(userPosition.lat, userPosition.lng, profile.latlng.lat, profile.latlng.lng)
+                            : undefined;
+                        
+                        // Mock online status based on ID for consistency
+                        const onlineStatus = (String(profile.id).charCodeAt(0) % 2 === 0);
+
+                        return {
+                            id: profile.id,
+                            name: profile.displayName || profile.name || '用戶',
+                            avatarUrl: profile.avatarUrl,
+                            lastCheckIn: '未知', // This will be replaced
+                            position: { top: '0', left: '0' }, 
+                            latlng: profile.latlng,
+                            distance: distance,
+                            onlineStatus: onlineStatus
+                        };
+                    });
+                    
+                    // Sort by distance if available
+                    if (userPosition) {
+                        friendsWithDetails.sort((a, b) => (a.distance || 9999) - (b.distance || 9999));
+                    }
+                    
+                    setFriends(friendsWithDetails);
                 } catch (error) {
                     console.error("Failed to fetch friends", error);
                     setFriends([]);
@@ -52,17 +71,18 @@ const FriendsMapPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger 
             setLoading(false);
         };
         fetchFriends();
-    }, [location, refreshTrigger]);
+    }, [location, refreshTrigger, userPosition]);
 
     const mapPins = useMemo(() => {
         const pins: MapPin[] = friends
-            .filter(f => f.latlng) // Guard against missing latlng
+            .filter(f => f.latlng) // FIX: Guard against missing latlng
             .map(friend => ({
                 id: friend.id,
                 latlng: friend.latlng,
                 isFriend: true,
                 avatarUrl: friend.avatarUrl,
                 name: friend.name,
+                onlineStatus: friend.onlineStatus,
             }));
 
         if (userPosition && currentUser) {
@@ -140,10 +160,15 @@ const FriendsMapPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger 
                             onKeyDown={(e) => e.key === 'Enter' && handleListFriendClick(friend.id)}
                             className="bg-brand-secondary p-3 rounded-lg flex items-center gap-4 cursor-pointer border-2 transition-all duration-300 border-brand-accent/30 hover:border-brand-accent hover:shadow-lg hover:shadow-brand-accent/20"
                         >
-                            <img src={friend.avatarUrl} alt={friend.name} className="w-12 h-12 rounded-full object-cover" />
+                            <div className="relative flex-shrink-0">
+                                <img src={friend.avatarUrl} alt={friend.name} className="w-12 h-12 rounded-full object-cover" />
+                                <div className={`absolute bottom-0 right-0 w-3 h-3 ${friend.onlineStatus ? 'bg-green-500' : 'bg-gray-400'} rounded-full border-2 border-brand-secondary`}></div>
+                            </div>
                             <div>
                                 <h3 className="font-bold text-brand-light">{friend.name}</h3>
-                                <p className="text-sm text-brand-muted">上次在哪：{friend.lastCheckIn}</p>
+                                <p className="text-sm text-brand-muted">
+                                    {friend.distance !== undefined ? `距離 ${friend.distance.toFixed(1)} 公里` : '距離未知'}
+                                </p>
                             </div>
                         </div>
                     ))}

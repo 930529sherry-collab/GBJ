@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { UserProfile, FriendRequest } from '../types';
 import { BackIcon } from '../components/icons/ActionIcons';
-import { getFriends, userApi } from '../utils/api';
+import { userApi } from '../utils/api';
 import { auth, db } from '../firebase/config';
 
 const FriendsListPage: React.FC = () => {
@@ -13,81 +14,44 @@ const FriendsListPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!auth.currentUser) {
+            setLoading(false);
+            return;
+        }
+
+        const uid = auth.currentUser.uid;
         setLoading(true);
-        let unsubscribeRequests = () => {};
 
-        const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
-            // Clean up previous listener
-            unsubscribeRequests();
-
-            if (user) {
-                try {
-                    // Fetch friends list
-                    const friendProfiles = await getFriends(user.uid);
-                    setFriends(friendProfiles);
-
-                    // Set up listener for friend requests in receivedFriendRequests subcollection
-                    const requestsRef = db.collection('users').doc(user.uid).collection('receivedFriendRequests');
-                    const q = requestsRef.where('status', '==', 'pending');
-                    
-                    unsubscribeRequests = q.onSnapshot((snapshot) => {
-                        const requests: FriendRequest[] = snapshot.docs.map(doc => {
-                            const data = doc.data();
-                            // 資料庫欄位對應修正
-                            return {
-                                id: doc.id,
-                                senderUid: data.fromUid || data.senderUid,
-                                senderName: data.from || data.senderName,
-                                senderAvatarUrl: data.senderAvatarUrl || '',
-                                status: data.status || 'pending',
-                                timestamp: data.timestamp,
-                                ...data,
-                            } as FriendRequest;
-                        });
-                        setPendingRequests(requests);
-                        setLoading(false); // Only stop loading after requests are loaded
-                    }, (error) => {
-                        console.error("Friend request listener error:", error);
-                        setLoading(false);
-                    });
-
-                } catch (error) {
-                    console.error("Failed to fetch friends data:", error);
-                    setFriends([]);
-                    setPendingRequests([]);
-                    setLoading(false);
-                }
-            } else {
-                console.log("User is not logged in.");
-                setFriends([]);
-                setPendingRequests([]);
-                setLoading(false);
-            }
+        const friendsRef = db.collection('users').doc(uid).collection('Friendlist');
+        const unsubFriends = friendsRef.orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
+            const friendsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as UserProfile[];
+            setFriends(friendsData);
+            setLoading(false);
+        }, (error) => {
+            console.error("Error listening to friends:", error);
+            setLoading(false);
+        });
+        
+        const requestsRef = db.collection('users').doc(uid).collection('friendRequests');
+        const q = requestsRef.where('status', '==', 'pending');
+        const unsubRequests = q.onSnapshot((snapshot) => {
+            const requests: FriendRequest[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
+            setPendingRequests(requests);
+        }, (error) => {
+            console.error("Error listening to requests:", error);
         });
 
         return () => {
-            unsubscribeAuth();
-            unsubscribeRequests();
+            unsubFriends();
+            unsubRequests();
         };
     }, []);
 
     const handleRespond = async (e: React.MouseEvent, request: FriendRequest, accept: boolean) => {
         e.stopPropagation();
-        
         try {
-            // Optimistic UI update
-            setPendingRequests(prev => prev.filter(r => r.id !== request.id));
-
-            await userApi.respondFriendRequest(request.senderUid, accept);
-
-            if (accept && auth.currentUser) {
-                // 等待 Firestore 同步
-                await new Promise(r => setTimeout(r, 800));
-
-                // Re-fetch friends list to show the new friend
-                const friendProfiles = await getFriends(auth.currentUser.uid);
-                setFriends(friendProfiles);
-            }
+            // FIX: Corrected the call to userApi.respondFriendRequest to include request.id.
+            await userApi.respondFriendRequest(request.senderUid, accept, request.id);
         } catch (error) {
             console.error("Failed to respond:", error);
             alert("操作失敗，請稍後再試。");
@@ -115,7 +79,6 @@ const FriendsListPage: React.FC = () => {
                 </button>
             </div>
             
-            {/* Search Input */}
             <div className="relative">
                 <input
                     type="text"
@@ -132,7 +95,6 @@ const FriendsListPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Pending Requests Section */}
             {pendingRequests.length > 0 && (
                 <div className="space-y-3 mb-6">
                     <h3 className="text-sm font-bold text-brand-accent px-1 flex items-center gap-2">
@@ -170,7 +132,6 @@ const FriendsListPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Friends List */}
             <div className="space-y-3">
                 {pendingRequests.length === 0 && filteredFriends.length > 0 && (
                      <h3 className="text-sm font-bold text-brand-muted px-1">我的好友 ({filteredFriends.length})</h3>

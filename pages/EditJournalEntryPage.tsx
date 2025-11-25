@@ -1,112 +1,141 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { JournalEntry, Store, UserProfile } from '../types';
+import { Store, JournalEntry, UserProfile } from '../types';
 import { BackIcon, StarIcon, XIcon } from '../components/icons/ActionIcons';
 import { MOCK_STORES, formatDate } from '../constants';
+import { journalApi, updateAllMissionProgress } from '../utils/api';
 
 const EditJournalEntryPage: React.FC = () => {
     const navigate = useNavigate();
-    const { entryId } = useParams<{ entryId: string }>();
+    const { entryId } = useParams<{ entryId?: string }>();
+    const isEditing = Boolean(entryId);
     
     const [storeId, setStoreId] = useState<number | string>('');
     const [drinkName, setDrinkName] = useState('');
     const [rating, setRating] = useState(0);
     const [notes, setNotes] = useState('');
-    const [date, setDate] = useState(formatDate(new Date()));
+    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [imageUrl, setImageUrl] = useState('');
     const [stores, setStores] = useState<Store[]>([]);
+    const [isSaving, setIsSaving] = useState(false);
+    const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
-    const [userId, setUserId] = useState<string | number>(0);
-
-    const isEditing = !!entryId;
 
     useEffect(() => {
-        // Load User ID
-        const profileData = localStorage.getItem('userProfile');
-        const profile: UserProfile | null = profileData ? JSON.parse(profileData) : null;
-        setUserId(profile ? profile.id : 0);
-
-        const savedStores = localStorage.getItem('stores');
-        setStores(savedStores ? JSON.parse(savedStores) : MOCK_STORES);
-        
-        if (isEditing) {
-            const savedEntries = localStorage.getItem('journalEntries');
-            const entries: JournalEntry[] = savedEntries ? JSON.parse(savedEntries) : [];
-            const entryToEdit = entries.find(e => String(e.id) === entryId);
+        const loadData = async () => {
+            const savedStores = localStorage.getItem('stores');
+            setStores(savedStores ? JSON.parse(savedStores) : MOCK_STORES);
             
-            if (entryToEdit) {
-                setStoreId(entryToEdit.storeId);
-                setDrinkName(entryToEdit.drinkName);
-                setRating(entryToEdit.rating);
-                setNotes(entryToEdit.notes);
-                setDate(entryToEdit.date);
-                setImageUrl(entryToEdit.imageUrl || '');
+            const profileData = localStorage.getItem('userProfile');
+            if (profileData) {
+                const profile = JSON.parse(profileData);
+                setCurrentUser(profile);
+
+                if (isEditing && entryId) {
+                    setLoading(true);
+                    try {
+                        // FIX: Corrected call to journalApi.
+                        const entryToEdit = await journalApi.getJournalEntry(String(profile.id), entryId);
+                        if (entryToEdit) {
+                            setStoreId(entryToEdit.storeId);
+                            setDrinkName(entryToEdit.drinkName);
+                            setRating(entryToEdit.rating);
+                            setNotes(entryToEdit.notes);
+                            setDate(entryToEdit.date);
+                            setImageUrl(entryToEdit.imageUrl || '');
+                        } else {
+                             console.error("Entry not found");
+                             navigate('/journal');
+                        }
+                    } catch (e) {
+                        console.error("Failed to load entry for editing", e);
+                        navigate('/journal');
+                    }
+                    setLoading(false);
+                } else {
+                    setLoading(false);
+                }
             } else {
-                // Entry not found, maybe redirect back
-                navigate('/journal');
+                // Not logged in, redirect
+                navigate('/');
+                setLoading(false);
             }
-        }
-        setLoading(false);
+        };
+        loadData();
     }, [entryId, isEditing, navigate]);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const selectedStore = stores.find(s => s.id === Number(storeId));
-        if (!selectedStore || rating === 0) return;
-
-        const savedEntries = localStorage.getItem('journalEntries');
-        const entries: JournalEntry[] = savedEntries ? JSON.parse(savedEntries) : [];
-        
-        let updatedEntries = [...entries];
-
-        if (isEditing) {
-            const index = updatedEntries.findIndex(e => String(e.id) === entryId);
-            if (index > -1) {
-                updatedEntries[index] = {
-                    ...updatedEntries[index],
-                    // Ensure user ID is preserved or updated if originally missing
-                    userId: userId, 
-                    storeId: selectedStore.id,
-                    storeName: selectedStore.name,
-                    drinkName,
-                    rating,
-                    notes,
-                    date,
-                    imageUrl,
-                };
-            }
-        } else {
-            const newEntry: JournalEntry = {
-                id: Date.now(),
-                userId: userId, // Assign owner
-                storeId: selectedStore.id,
-                storeName: selectedStore.name,
-                drinkName,
-                rating,
-                notes,
-                date,
-                imageUrl,
-            };
-            updatedEntries.unshift(newEntry);
+        if (!drinkName.trim() || rating === 0) {
+            alert("請填寫品項與評分。");
+            return;
         }
 
-        localStorage.setItem('journalEntries', JSON.stringify(updatedEntries));
-        navigate('/journal');
+        if (!currentUser) {
+            alert("無法識別使用者，請重新登入。");
+            return;
+        }
+
+        setIsSaving(true);
+        const selectedStore = stores.find(s => s.id === Number(storeId));
+
+        const entryData = {
+            storeId: Number(storeId) || 0,
+            storeName: selectedStore?.name || '',
+            drinkName: drinkName.trim(),
+            rating,
+            notes: notes.trim(),
+            date,
+            imageUrl: imageUrl.trim(),
+            userId: currentUser.id // Ensure userId is saved
+        };
+
+        try {
+            if (isEditing && entryId) {
+                // FIX: Corrected call to journalApi.
+                await journalApi.updateJournalEntry(String(currentUser.id), entryId, entryData);
+            } else {
+                // FIX: Corrected call to journalApi.
+                await journalApi.createJournalEntry(String(currentUser.id), entryData as Omit<JournalEntry, 'id'>);
+            }
+            setIsSaving(false);
+            alert(isEditing ? "筆記已更新！" : "筆記已新增！");
+            
+            // Trigger mission update
+            if (!currentUser.isGuest) {
+                updateAllMissionProgress(currentUser.id);
+            }
+            
+            navigate('/journal');
+
+        } catch (error) {
+            setIsSaving(false);
+            alert("儲存失敗，請稍後再試。");
+            console.error("Failed to save journal entry:", error);
+        }
     };
     
-    const isFormValid = storeId && drinkName.trim() && rating > 0;
+    const handleCancel = () => {
+        if (isEditing && entryId) {
+            navigate(`/journal/view/${entryId}`);
+        } else {
+            navigate('/journal');
+        }
+    };
+
+    const isFormValid = drinkName.trim() && rating > 0;
 
     if (loading) {
-         return <div className="text-center p-10 text-brand-accent">載入中...</div>;
+        return <div className="text-center p-10 text-brand-accent">讀取筆記中...</div>;
     }
 
     return (
         <div className="animate-fade-in space-y-6">
             <div className="flex items-center gap-2">
-                 <button onClick={() => navigate('/journal')} className="flex items-center gap-2 text-brand-muted hover:text-brand-light transition-colors font-semibold">
+                 <button onClick={handleCancel} className="flex items-center gap-2 text-brand-muted hover:text-brand-light transition-colors font-semibold">
                     <BackIcon />
-                    <span>返回筆記列表</span>
+                    <span>返回</span>
                 </button>
             </div>
 
@@ -117,15 +146,14 @@ const EditJournalEntryPage: React.FC = () => {
                 
                 <form onSubmit={handleSubmit} className="space-y-6">
                      <div>
-                        <label htmlFor="store" className="block text-sm font-medium text-brand-light mb-1">酒吧*</label>
+                        <label htmlFor="store" className="block text-sm font-medium text-brand-light mb-1">酒吧 (選填)</label>
                         <select 
                             id="store" 
                             value={storeId} 
                             onChange={e => setStoreId(e.target.value)} 
-                            required 
                             className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-3 text-brand-light focus:ring-brand-accent focus:border-brand-accent"
                         >
-                            <option value="" disabled>選擇一家酒吧</option>
+                            <option value="">選擇一家酒吧</option>
                             {stores.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant')).map(store => (
                                 <option key={store.id} value={store.id}>{store.name}</option>
                             ))}
@@ -157,29 +185,36 @@ const EditJournalEntryPage: React.FC = () => {
                     </div>
                     
                      <div>
-                        <label htmlFor="notes" className="block text-sm font-medium text-brand-light mb-1">心得筆記</label>
+                        <div className="flex justify-between items-center">
+                            <label htmlFor="notes" className="block text-sm font-medium text-brand-light mb-1">心得筆記</label>
+                            <span className={`text-xs font-mono ${notes.length > 30 ? 'text-red-500' : 'text-brand-muted'}`}>
+                                {notes.length}/30
+                            </span>
+                        </div>
                         <textarea 
                             id="notes" 
                             value={notes} 
                             onChange={e => setNotes(e.target.value)} 
-                            rows={5} 
+                            rows={3}
+                            maxLength={30} 
                             className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-3 text-brand-light focus:ring-brand-accent focus:border-brand-accent" 
                             placeholder="分享你的口感、香氣或當下的心情..."
                         ></textarea>
                     </div>
-                    
-                     <div>
-                        <label htmlFor="date" className="block text-sm font-medium text-brand-light mb-1">日期</label>
-                        <input 
-                            type="date" 
-                            id="date" 
-                            value={date} 
-                            onChange={e => setDate(e.target.value)} 
-                            className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-3 text-brand-light focus:ring-brand-accent focus:border-brand-accent" 
+
+                    <div>
+                        <label htmlFor="date" className="block text-sm font-medium text-brand-light mb-1">品飲日期*</label>
+                        <input
+                            type="date"
+                            id="date"
+                            value={date}
+                            onChange={e => setDate(e.target.value)}
+                            required
+                            className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-3 text-brand-light focus:ring-brand-accent focus:border-brand-accent"
                         />
                     </div>
                     
-                    <div>
+                     <div>
                         <label htmlFor="imageUrl" className="block text-sm font-medium text-brand-light mb-1">圖片網址 (選填)</label>
                         <input 
                             type="text" 
@@ -197,9 +232,14 @@ const EditJournalEntryPage: React.FC = () => {
                                     alt="Image Preview" 
                                     className="w-full h-auto max-h-48 rounded-lg object-cover border-2 border-brand-accent/20"
                                     onError={(e) => { 
-                                        e.currentTarget.style.display = 'none'; 
-                                    }} 
+                                        const target = e.target as HTMLImageElement;
+                                        target.onerror = null; 
+                                        target.style.display = 'none'; 
+                                        const errorMsg = target.nextSibling as HTMLElement;
+                                        if (errorMsg) errorMsg.style.display = 'block';
+                                    }}
                                 />
+                                <p style={{display: 'none'}} className="text-red-500 text-sm mt-2">無法載入圖片預覽，請檢查網址。</p>
                                 <button 
                                     type="button"
                                     onClick={() => setImageUrl('')}
@@ -215,20 +255,44 @@ const EditJournalEntryPage: React.FC = () => {
                     <div className="flex gap-4 pt-4">
                         <button 
                             type="button" 
-                            onClick={() => navigate('/journal')} 
+                            onClick={handleCancel} 
                             className="flex-1 bg-brand-primary border-2 border-brand-accent text-brand-light font-semibold py-3 px-4 rounded-lg hover:bg-brand-accent/10 transition-colors"
                         >
                             取消
                         </button>
                         <button 
                             type="submit" 
-                            disabled={!isFormValid} 
+                            disabled={!isFormValid || isSaving} 
                             className="flex-1 bg-brand-accent text-brand-primary font-bold py-3 px-4 rounded-lg hover:bg-opacity-80 transition-colors disabled:bg-brand-muted/50 disabled:cursor-not-allowed"
                         >
-                            儲存筆記
+                            {isSaving ? '儲存中...' : '儲存筆記'}
                         </button>
                     </div>
                 </form>
+
+                {isEditing && (
+                    <div className="mt-8 pt-6 border-t border-brand-accent/10">
+                        <button 
+                            onClick={async () => {
+                                if (window.confirm("確定要刪除這篇筆記嗎？此操作無法復原。")) {
+                                    if(currentUser && entryId) {
+                                        try {
+                                            // FIX: Corrected call to journalApi.
+                                            await journalApi.deleteJournalEntry(String(currentUser.id), entryId);
+                                            alert("筆記已刪除");
+                                            navigate('/journal');
+                                        } catch (e) {
+                                            alert("刪除失敗");
+                                        }
+                                    }
+                                }
+                            }}
+                            className="w-full text-center text-red-500 hover:bg-red-500/10 py-2 rounded-lg transition-colors font-semibold"
+                        >
+                            刪除筆記
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

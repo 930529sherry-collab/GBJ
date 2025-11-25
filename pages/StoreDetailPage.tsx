@@ -5,6 +5,7 @@ import { MOCK_STORES, MOCK_ORDERS } from '../constants';
 import { Store, Order, UserProfile, Review } from '../types';
 import StoreDetail from '../components/StoreDetail';
 import { useGuestGuard } from '../context/GuestGuardContext';
+import { getStores, addNotificationToUser } from '../utils/api';
 
 const ReservationModal: React.FC<{
     store: Store | null;
@@ -30,14 +31,13 @@ const ReservationModal: React.FC<{
     const handleConfirm = () => {
         if (!store) return;
         
-        // Get current user ID
         const profileData = localStorage.getItem('userProfile');
         const profile: UserProfile | null = profileData ? JSON.parse(profileData) : null;
         const userId = profile ? profile.id : 0;
 
         const newOrder: Order = {
             id: `ORD${Date.now()}`,
-            userId: userId, // Assign owner
+            userId: userId, 
             storeName: store.name,
             date: date,
             time: time,
@@ -50,6 +50,14 @@ const ReservationModal: React.FC<{
 
         const updatedOrders = [newOrder, ...existingOrders];
         localStorage.setItem('orders', JSON.stringify(updatedOrders));
+
+        if (profile && !profile.isGuest) {
+            addNotificationToUser(
+                String(profile.id),
+                `您在 ${store.name} 的預約已確認 (${date} ${time})。`,
+                '訂單通知'
+            );
+        }
 
         setStep('success');
         setTimeout(() => {
@@ -149,18 +157,43 @@ const StoreDetailPage: React.FC = () => {
     const { checkGuest } = useGuestGuard();
 
     useEffect(() => {
-        setLoading(true);
-        const profile = localStorage.getItem('userProfile');
-        if (profile) setCurrentUser(JSON.parse(profile));
+        const fetchStoreData = async () => {
+            setLoading(true);
+            const profile = localStorage.getItem('userProfile');
+            if (profile) setCurrentUser(JSON.parse(profile));
 
-        setTimeout(() => {
-            const storeId = parseInt(id || '0', 10);
-            const savedStores = localStorage.getItem('stores');
-            const allStores: Store[] = savedStores ? JSON.parse(savedStores) : MOCK_STORES;
-            const foundStore = allStores.find(s => s.id === storeId);
-            setStore(foundStore || null);
+            try {
+                // Fetch stores from API ensuring we get the latest data including Firestore ones
+                const allStores = await getStores();
+                
+                // Find store matching the ID. 
+                // Store.id can be string or number, id param is string. Use string comparison.
+                const foundStore = allStores.find(s => String(s.id) === id);
+                
+                if (foundStore) {
+                    setStore(foundStore);
+                } else {
+                    // Fallback: Check localStorage if not found in API result (e.g. offline or legacy)
+                    const savedStores = localStorage.getItem('stores');
+                    const fallbackStores: Store[] = savedStores ? JSON.parse(savedStores) : MOCK_STORES;
+                    const foundLocal = fallbackStores.find(s => String(s.id) === id);
+                    setStore(foundLocal || null);
+                }
+            } catch (error) {
+                console.error("Error loading store details:", error);
+                // Final Fallback to MOCK_STORES on error
+                const foundMock = MOCK_STORES.find(s => String(s.id) === id);
+                setStore(foundMock || null);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (id) {
+            fetchStoreData();
+        } else {
             setLoading(false);
-        }, 300);
+        }
     }, [id]);
     
     const handleUpdateReviews = (newReview: Review) => {
@@ -171,48 +204,45 @@ const StoreDetailPage: React.FC = () => {
 
         setStore(updatedStore);
 
+        // Ideally we should update Firestore here too, but for now keep local sync
         const savedStoresString = localStorage.getItem('stores');
         const allStores: Store[] = savedStoresString ? JSON.parse(savedStoresString) : MOCK_STORES;
-        const updatedAllStores = allStores.map(s => s.id === store.id ? updatedStore : s);
+        // Compare using String to handle mixed types
+        const updatedAllStores = allStores.map(s => String(s.id) === String(store.id) ? updatedStore : s);
+        
         localStorage.setItem('stores', JSON.stringify(updatedAllStores));
     };
 
-    const handleReservationClick = () => {
-        checkGuest(() => setIsModalOpen(true));
-    };
-
-    const handleCloseModal = () => {
-        setIsModalOpen(false);
-    };
-
     if (loading) {
-        return <div className="text-center p-10 text-brand-accent">讀取店家資訊...</div>;
+        return <div className="text-center p-10 text-brand-accent">載入店家資訊...</div>;
     }
 
     if (!store) {
         return (
             <div className="text-center p-10 text-brand-muted">
-                <p>找不到這家店的資訊。</p>
-                <button onClick={() => navigate(-1)} className="mt-4 text-brand-accent font-semibold">返回</button>
+                <p>找不到此店家資訊。</p>
+                <button onClick={() => navigate('/')} className="mt-4 text-brand-accent font-semibold">回到地圖</button>
             </div>
         );
     }
-    
+
     return (
-        <div className="animate-fade-in">
+        <>
             <StoreDetail 
                 store={store} 
-                onBack={() => navigate(-1)}
-                onReserveClick={handleReservationClick}
+                onBack={() => navigate(-1)} 
+                onReserveClick={() => {
+                    checkGuest(() => setIsModalOpen(true));
+                }}
                 currentUser={currentUser}
                 onUpdateReviews={handleUpdateReviews}
             />
-            <ReservationModal
+            <ReservationModal 
                 store={store}
                 isOpen={isModalOpen}
-                onClose={handleCloseModal}
+                onClose={() => setIsModalOpen(false)}
             />
-        </div>
+        </>
     );
 };
 

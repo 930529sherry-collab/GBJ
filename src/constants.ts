@@ -142,7 +142,9 @@ export const MOCK_DEALS: Deal[] = [
     { id: 8, storeName: 'Bar Mood', title: '經典雞尾酒週', description: '本週限定，所有經典雞尾酒系列 (Old Fashioned, Negroni...) 享第二杯半價。', expiry: formatDate(addDays(today, 7)) },
 ];
 
-export const MISSIONS_FOR_IMPORT = [
+// FIX: Explicitly type MISSIONS_FOR_IMPORT to ensure 'type' property is '"daily" | "special"' and not 'string'.
+// This resolves a TypeScript error when creating INITIAL_MISSIONS and allows it to be exported for use in other files like ProfilePage.
+export const MISSIONS_FOR_IMPORT: Array<Omit<Mission, 'current' | 'status' | 'claimed'>> = [
     // --- 每日任務 ---
     { id: 'daily_check_in', title: '每日打卡', description: '發布一則動態即算打卡', xpReward: 50, type: 'daily', target: 1 },
     { id: 'daily_chat', title: '每日聊天', description: '在聊天室發送一則訊息', xpReward: 30, type: 'daily', target: 1 },

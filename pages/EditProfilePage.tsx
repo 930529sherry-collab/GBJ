@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MOCK_USER_PROFILE } from '../constants';
 import { UserProfile } from '../types';
-import { updateUserProfile, getUserProfile } from '../utils/api';
+import { updateUserProfile, getUserProfile, uploadImage } from '../utils/api';
 import { auth } from '../firebase/config';
 
 const EditProfilePage: React.FC = () => {
@@ -11,6 +11,7 @@ const EditProfilePage: React.FC = () => {
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [name, setName] = useState('');
     const [avatarUrl, setAvatarUrl] = useState('');
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -31,11 +32,13 @@ const EditProfilePage: React.FC = () => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             
-            // Limit to 500KB to reduce storage load and improve performance
-            if (file.size > 500 * 1024) {
-                alert('圖片大小請勿超過 500KB');
+            // Limit to 5MB
+            if (file.size > 5 * 1024 * 1024) {
+                alert('圖片大小請勿超過 5MB');
                 return;
             }
+
+            setSelectedFile(file);
 
             const reader = new FileReader();
             reader.onloadend = () => {
@@ -55,31 +58,35 @@ const EditProfilePage: React.FC = () => {
         
         try {
             const uid = String(profile.id);
+            let finalAvatarUrl = profile.avatarUrl; // Use existing URL by default
+
+            // 0. 如果有選新圖片，先上傳到 Storage
+            if (selectedFile && profile.id !== 0) {
+                console.log("正在上傳圖片到 Storage...");
+                finalAvatarUrl = await uploadImage(selectedFile, `avatars/${uid}_${Date.now()}.jpg`);
+            }
 
             // 1. 準備要更新的資料
-            // 同時更新 displayName 和 name，確保相容性
-            // 圖片(avatarUrl) 包含 base64，只存入 Firestore，不存入 Auth (避免 URL too long)
             const updates: Partial<UserProfile> = {
                 displayName: name,
                 name: name,
-                avatarUrl: avatarUrl,
+                avatarUrl: finalAvatarUrl,
                 email: email,
                 phone: phone
             };
 
-            // 2. 更新 Firestore 資料庫 (可以存大圖片字串)
+            // 2. 更新 Firestore 資料庫
             if (profile.id !== 0 && profile.id !== '0') {
                  console.log("正在更新資料庫...");
                  await updateUserProfile(uid, updates);
             }
             
-            // 3. 更新 Firebase Auth (這步很重要！確保 Auth 狀態同步)
-            // 注意：不更新 photoURL，因為 base64 通常會超過 Auth 限制導致 "auth/invalid-profile-attribute"
+            // 3. 更新 Firebase Auth (現在網址變短了，可以安全更新)
             if (auth.currentUser) {
                 console.log("正在更新 Auth Profile...");
                 await auth.currentUser.updateProfile({
                     displayName: name,
-                    // photoURL: avatarUrl // ❌ 避免此行導致 "Photo URL too long" 錯誤
+                    photoURL: finalAvatarUrl 
                 });
             }
             
@@ -89,6 +96,7 @@ const EditProfilePage: React.FC = () => {
             
             try {
                 if (profile.id !== 0 && profile.id !== '0') {
+                    // Fetch fresh profile to get any server-side changes
                     latestProfile = await getUserProfile(uid);
                 } else {
                     // 訪客模式直接用本地更新
@@ -137,7 +145,7 @@ const EditProfilePage: React.FC = () => {
                         onClick={handleAvatarClick}
                         className="bg-brand-primary border-2 border-brand-accent text-brand-light text-sm py-1 px-3 rounded-lg hover:bg-brand-accent/10 transition-colors"
                     >
-                        更換頭像 (Max 500KB)
+                        更換頭像
                     </button>
                 </div>
                 <div>

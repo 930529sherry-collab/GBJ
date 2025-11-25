@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import * as L from 'leaflet';
@@ -8,7 +7,7 @@ import MapPlaceholder from '../components/MapPlaceholder';
 import { useGeolocation } from '../context/GeolocationContext';
 import { getDistance } from '../utils/distance';
 import { GoogleGenAI, Type } from "@google/genai";
-import { getStores } from '../utils/api'; // Import getStores
+import { getStores } from '../utils/api';
 
 interface AiRecommendation {
     storeName: string;
@@ -62,20 +61,16 @@ const MapPage: React.FC = () => {
         const fetchStores = async () => {
             setLoading(true);
             try {
-                // Fetch stores from Firestore
                 const allStores = await getStores();
-                
-                // Filter for Taipei stores (optional based on requirements, keeping existing logic)
-                const taipeiStores = allStores.filter(store => store.address.includes('台北市'));
 
                 if (userPosition) {
-                    const storesWithDistance = taipeiStores.map(store => {
+                    const storesWithDistance = allStores.map(store => {
                         const distance = getDistance(userPosition.lat, userPosition.lng, store.latlng.lat, store.latlng.lng);
                         return { ...store, distance: `${distance.toFixed(1)} 公里` };
                     }).sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
                     setStores(storesWithDistance);
                 } else {
-                     setStores(taipeiStores);
+                     setStores(allStores);
                 }
             } catch (error) {
                 console.error("Failed to load stores:", error);
@@ -90,7 +85,7 @@ const MapPage: React.FC = () => {
 
     const mapPins = useMemo(() => {
         const pins: MapPin[] = stores
-            .filter(s => s.latlng) // Guard against missing latlng
+            .filter(s => s.latlng) // FIX: Guard against missing latlng
             .map(s => ({
                 id: s.id,
                 latlng: s.latlng,

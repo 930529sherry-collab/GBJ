@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_DEALS, MOCK_STORES } from '../constants';
-import { Deal } from '../types';
+import { Deal, Store } from '../types';
+import { getStores, getDeals } from '../utils/api'; 
 
 const DealCard: React.FC<{ deal: Deal }> = ({ deal }) => (
     <div className="bg-brand-secondary p-5 rounded-xl border-2 border-brand-accent/20 shadow-lg shadow-brand-accent/10 space-y-2 transform transition-transform hover:scale-105 hover:border-brand-accent/50">
@@ -14,26 +14,33 @@ const DealCard: React.FC<{ deal: Deal }> = ({ deal }) => (
 
 const DealsPage: React.FC = () => {
     const [deals, setDeals] = useState<Deal[]>([]);
+    const [stores, setStores] = useState<Store[]>([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
     useEffect(() => {
-        setTimeout(() => {
-            // Get the names of stores in Taipei
-            const taipeiStoreNames = MOCK_STORES
-                .filter(store => store.address.includes('台北市'))
-                .map(store => store.name);
-            
-            // Filter deals based on store name
-            const taipeiDeals = MOCK_DEALS.filter(deal => taipeiStoreNames.includes(deal.storeName));
+        const fetchDealsAndStores = async () => {
+            setLoading(true);
+            try {
+                const taipeiStores = await getStores();
+                setStores(taipeiStores);
 
-            setDeals(taipeiDeals);
-            setLoading(false);
-        }, 500);
+                const allDeals = await getDeals();
+                const taipeiStoreNames = taipeiStores.map(store => store.name);
+                const taipeiDeals = allDeals.filter(deal => taipeiStoreNames.includes(deal.storeName));
+                
+                setDeals(taipeiDeals);
+            } catch (error) {
+                console.error("Failed to load data for Deals page:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchDealsAndStores();
     }, []);
 
     const handleDealClick = (deal: Deal) => {
-        const store = MOCK_STORES.find(s => s.name === deal.storeName);
+        const store = stores.find(s => s.name === deal.storeName);
         if (store) {
             navigate(`/store/${store.id}`);
         }

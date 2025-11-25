@@ -1,9 +1,10 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 import { BackIcon } from '../components/icons/ActionIcons';
-import { getFriends } from '../utils/api';
+import { getFriends, chatApi } from '../utils/api';
 
 const ChatListPage: React.FC = () => {
     const navigate = useNavigate();
@@ -11,12 +12,16 @@ const ChatListPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchFriends = async () => {
+        const fetchFriendsAndMarkRead = async () => {
             setLoading(true);
             const profileData = localStorage.getItem('userProfile');
             if (profileData) {
                 const currentUser: UserProfile = JSON.parse(profileData);
                 try {
+                    // Mark chats as read when entering the list
+                    if (currentUser.hasUnreadChats) {
+                        await chatApi.markChatsAsRead(currentUser.id);
+                    }
                     const friendProfiles = await getFriends(currentUser.id);
                     setFriends(friendProfiles);
                 } catch (error) {
@@ -25,7 +30,7 @@ const ChatListPage: React.FC = () => {
             }
             setLoading(false);
         };
-        fetchFriends();
+        fetchFriendsAndMarkRead();
     }, []);
 
     const handleChatClick = (friendId: number | string) => {

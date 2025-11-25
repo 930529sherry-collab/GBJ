@@ -1,12 +1,12 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { MOCK_STORES, MOCK_ORDERS } from '../constants';
+import { MOCK_ORDERS } from '../constants';
 import { Store, Order, UserProfile } from '../types';
 import { PlusIcon, ChevronDownIcon, LocationMarkerIcon, StarIcon, ClockIcon } from '../components/icons/ActionIcons';
 import { useGeolocation } from '../context/GeolocationContext';
 import { getDistance } from '../utils/distance';
 import { useGuestGuard } from '../context/GuestGuardContext';
+import { getStores, addNotificationToUser } from '../utils/api'; 
 
 const availabilityStyles = {
     Available: { color: 'bg-green-500', text: '有空位' },
@@ -24,12 +24,21 @@ const ReservationModal: React.FC<{
     const [time, setTime] = useState('19:00');
     const [people, setPeople] = useState(2);
     const today = new Date().toISOString().split('T')[0];
-    useEffect(() => { if (isOpen) { setDate(today); setTime('19:00'); setPeople(2); setStep('form'); } }, [isOpen, today]);
+    
+    useEffect(() => { 
+        if (isOpen) { 
+            setDate(today); 
+            setTime('19:00'); 
+            setPeople(2); 
+            setStep('form'); 
+        } 
+    }, [isOpen, today]);
+
     const handleConfirm = () => {
         if (!store) return;
         
         const profileData = localStorage.getItem('userProfile');
-        const profile = profileData ? JSON.parse(profileData) : null;
+        const profile: UserProfile | null = profileData ? JSON.parse(profileData) : null;
         const userId = profile ? profile.id : 0;
 
         const newOrder: Order = { 
@@ -45,14 +54,26 @@ const ReservationModal: React.FC<{
         const existingOrders: Order[] = existingOrdersString ? JSON.parse(existingOrdersString) : MOCK_ORDERS;
         const updatedOrders = [newOrder, ...existingOrders];
         localStorage.setItem('orders', JSON.stringify(updatedOrders));
+        
+        // Send notification
+        if (profile && !profile.isGuest) {
+            addNotificationToUser(
+                String(profile.id),
+                `您在 ${store.name} 的預約已確認 (${date} ${time})。`,
+                '訂單通知'
+            );
+        }
+
         setStep('success');
         setTimeout(onClose, 2000);
     };
+
     if (!isOpen || !store) return null;
+
     return (
-        <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex justify-center items-center p-4 backdrop-blur-md animate-fade-in">
             <div className="bg-brand-secondary rounded-2xl p-6 w-full max-w-sm border-2 border-brand-accent/30 shadow-2xl shadow-brand-accent/10">
-                {step === 'form' && (
+                {step === 'form' ? (
                     <>
                         <h2 className="text-xl font-bold text-brand-accent mb-1">預約訂位</h2>
                         <p className="text-brand-muted mb-6">店家：{store.name}</p>
@@ -79,8 +100,7 @@ const ReservationModal: React.FC<{
                             <button onClick={handleConfirm} className="flex-1 bg-brand-brown-cta text-brand-text-on-accent font-bold py-2 px-4 rounded-lg hover:bg-brand-brown-cta-hover transition-colors">確認預約</button>
                         </div>
                     </>
-                )}
-                {step === 'success' && (
+                ) : (
                     <div className="text-center py-8">
                         <svg className="w-16 h-16 text-brand-accent mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         <h2 className="text-2xl font-bold text-brand-accent">預約成功！</h2>
@@ -139,25 +159,23 @@ const HomePage: React.FC = () => {
     const [storeToReserve, setStoreToReserve] = useState<Store | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [isStoreListOpen, setIsStoreListOpen] = useState(true);
-    const [currentPage, setCurrentPage] = useState(1);
     const [sortType, setSortType] = useState<'distance' | 'rating' | 'availability'>('distance');
-    const ITEMS_PER_PAGE = 5;
-    const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+    
+    // --- Pagination State ---
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 5; // Show 5 stores per page
     
     const location = useLocation();
     const navigate = useNavigate();
     const { position: userPosition, error: userError } = useGeolocation();
     const { checkGuest } = useGuestGuard();
-
-    useEffect(() => {
-        const profile = localStorage.getItem('userProfile');
-        if (profile) setCurrentUser(JSON.parse(profile));
-    }, []);
     
+    // Reset to first page when search or sort changes
     useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, sortType]);
 
+    // --- Data Processing (Filtering and Sorting) ---
     const sortedAndFilteredStores = useMemo(() => {
         let filtered = stores.filter(store => 
             store.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -178,6 +196,7 @@ const HomePage: React.FC = () => {
         });
     }, [stores, searchTerm, sortType]);
 
+    // --- Pagination Logic ---
     const totalPages = Math.ceil(sortedAndFilteredStores.length / ITEMS_PER_PAGE);
     const paginatedStores = useMemo(() => {
         const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -193,34 +212,31 @@ const HomePage: React.FC = () => {
         setCurrentPage(prev => Math.max(prev - 1, 1));
     };
 
+    // --- Data Fetching ---
     useEffect(() => {
         setLoading(true);
-        
-        setTimeout(() => {
-            const savedStores = localStorage.getItem('stores');
-            let allStores: Store[];
-            if (savedStores) {
-                allStores = JSON.parse(savedStores);
-            } else {
-                allStores = MOCK_STORES;
-                localStorage.setItem('stores', JSON.stringify(MOCK_STORES));
+        const fetchAndProcessStores = async () => {
+            try {
+                // Unified API call to get stores
+                const allStores = await getStores(); 
+                
+                if (userPosition) {
+                    const storesWithDistance = allStores.map(store => {
+                        const distance = getDistance(userPosition.lat, userPosition.lng, store.latlng.lat, store.latlng.lng);
+                        return { ...store, distance: `${distance.toFixed(1)} 公里` };
+                    });
+                    setStores(storesWithDistance);
+                } else {
+                     setStores(allStores.map(s => ({ ...s, distance: '未知' })));
+                }
+            } catch (error) {
+                console.error("Failed to load stores for HomePage:", error);
+                setStores([]);
+            } finally {
+                setLoading(false);
             }
-            
-            const taipeiStores = allStores.filter(store => store.address.includes('台北市'));
-
-            if (userPosition) {
-                const storesWithDistance = taipeiStores.map(store => {
-                    const distance = getDistance(userPosition.lat, userPosition.lng, store.latlng.lat, store.latlng.lng);
-                    return { ...store, distance: `${distance.toFixed(1)} 公里` };
-                });
-                // Initial sort by distance is handled by default sortType 'distance' in useMemo
-                setStores(storesWithDistance);
-            } else {
-                 setStores(taipeiStores);
-            }
-
-            setLoading(false);
-        }, 500);
+        };
+        fetchAndProcessStores();
     }, [location, userPosition]);
 
     const handleOpenModal = (store: Store) => { 
@@ -293,6 +309,7 @@ const HomePage: React.FC = () => {
                                 <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"><svg className="w-5 h-5 text-brand-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></div>
                             </div>
 
+                            {/* Render the paginated list */}
                             {paginatedStores.length > 0 ? (
                                 <div className="space-y-4">
                                     {paginatedStores.map(store => <StoreCard key={store.id} store={store} onSelect={handleSelectStore} onReserveClick={handleOpenModal} />)}
@@ -304,6 +321,7 @@ const HomePage: React.FC = () => {
                                 </div>
                             )}
 
+                            {/* Pagination Controls */}
                             {totalPages > 1 && (
                                 <div className="flex justify-center items-center gap-4 mt-6">
                                     <button

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef } from 'react';
 import * as L from 'leaflet';
 
@@ -8,6 +9,7 @@ interface MapPin {
   isUser?: boolean; // New prop
   avatarUrl?: string;
   name?: string;
+  onlineStatus?: boolean;
 }
 
 interface MapPlaceholderProps {
@@ -44,7 +46,6 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // Create a stable layer group for markers
     const layerGroup = L.layerGroup().addTo(map);
     markersLayerRef.current = layerGroup;
 
@@ -72,18 +73,19 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
   // Update markers when pins change
   useEffect(() => {
     const map = mapRef.current;
-    const markersLayer = markersLayerRef.current;
+    let layerGroup = markersLayerRef.current;
 
-    if (!map || !markersLayer) return;
-
-    // Use clearLayers() instead of removing the group to prevent '_leaflet_pos' errors
-    try {
-      markersLayer.clearLayers();
-    } catch (e) {
-      console.warn("Could not clear layers, map might be unmounting.", e);
-      return; // Stop execution if we can't clear
-    }
+    if (!map) return;
     
+    // If layer group doesn't exist for some reason, recreate it
+    if (!layerGroup) {
+      layerGroup = L.layerGroup().addTo(map);
+      markersLayerRef.current = layerGroup;
+    }
+
+    // Always clear existing markers before adding new ones
+    layerGroup.clearLayers();
+
     if (pins.length === 0) return;
 
     const markers: L.Marker[] = [];
@@ -98,8 +100,14 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
           iconAnchor: [24, 24],
         });
       } else if (pin.isFriend) {
+        const onlineClass = pin.onlineStatus ? 'bg-green-500' : 'bg-gray-400';
         icon = L.divIcon({
-          html: `<img src="${pin.avatarUrl}" alt="${pin.name}" class="friend-marker-avatar" />`,
+          html: `
+            <div class="relative">
+              <img src="${pin.avatarUrl}" alt="${pin.name}" class="w-12 h-12 rounded-full object-cover border-2 border-brand-accent shadow-lg" />
+              <div class="absolute bottom-0 right-0 w-3 h-3 ${onlineClass} rounded-full border-2 border-brand-primary"></div>
+            </div>
+          `,
           className: 'friend-marker',
           iconSize: [48, 48],
           iconAnchor: [24, 48],
@@ -126,18 +134,10 @@ const MapPlaceholder: React.FC<MapPlaceholderProps> = ({ pins, onPinClick, cente
       });
       
       markers.push(marker);
-      markersLayer.addLayer(marker);
     });
+
+    markers.forEach(marker => layerGroup?.addLayer(marker));
     
-    const nonUserMarkers = markers.filter((_, index) => !pins[index].isUser);
-    if (nonUserMarkers.length > 0) {
-        const group = L.featureGroup(nonUserMarkers);
-        try {
-            map.fitBounds(group.getBounds().pad(0.3));
-        } catch(e) {
-            // Ignore bounds error
-        }
-    }
   }, [pins, onPinClick]);
 
   return <div ref={mapContainerRef} className="relative w-full h-full" />;

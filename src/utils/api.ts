@@ -1,6 +1,5 @@
 
 
-
 import firebase, { db, functions, auth, storage } from '../firebase/config';
 import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest, Deal, Mission } from '../types';
 import { WELCOME_COUPONS, INITIAL_MISSIONS, toDateObj, MOCK_DEALS } from '../constants';
@@ -28,7 +27,6 @@ const convertTimestamp = (ts: any): any => {
     return String(ts);
 };
 
-// FIX: Added and exported the 'addNotificationToUser' function to resolve missing import errors.
 export const addNotificationToUser = async (targetUid: string, message: string, type: string = '系統通知') => {
     if (!db || !targetUid) return;
     const newNotification: Notification = {
@@ -496,3 +494,4 @@ export const updateAllMissionProgress = async (userId: string | number): Promise
         console.error("Failed to update mission progress:", e);
     }
 };
+

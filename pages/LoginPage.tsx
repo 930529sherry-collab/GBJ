@@ -1,10 +1,12 @@
+
+
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_USER_PROFILE, WELCOME_COUPONS, MOCK_USERS } from '../constants';
+import { MOCK_USER_PROFILE, WELCOME_COUPONS, MOCK_USERS, INITIAL_MISSIONS } from '../constants';
 import { UserProfile, Coupon } from '../types';
 import firebase, { auth } from '../firebase/config';
 import { BackIcon } from '../components/icons/ActionIcons';
-// ✅ 修改 1: 引入 createUserProfileInDB
 import { getUserProfile, createFallbackUserProfile, createUserProfileInDB } from '../utils/api';
 
 const logoUrl = 'https://raw.githubusercontent.com/930529sherry-collab/gunboojo/56b3926c513c87c1cf6cbe82697e392cd03465e6/%E4%B9%BE%E4%B8%8D%E6%8F%AA%20%E5%BD%A9%E8%89%B2%E7%89%88.png';
@@ -64,26 +66,25 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
         setShowPasswordRequirements(false);
     }, [mode]);
 
-    // Sync Firebase User with Firestore using API utils
     const syncUserProfile = async (user: firebase.User, displayNameOverride?: string, photoUrlOverride?: string): Promise<UserProfile> => {
         try {
-            // 1. Try to get existing profile
             return await getUserProfile(user.uid);
-        } catch (e) {
-            console.log("User profile not found, checking mode...");
-            // ✅ 修改 2: 如果是登入模式找不到人，才用 Fallback (避免註冊時偷跑)
-            if (mode === 'login') {
-                 const displayName = displayNameOverride || user.displayName || name || '新用戶';
-                 return await createFallbackUserProfile(user, displayName, photoUrlOverride);
+        } catch (e: any) {
+            const errorMsg = e.message || String(e);
+            if (errorMsg.includes("User profile not found")) {
+                const displayName = displayNameOverride || user.displayName || name || '新用戶';
+                return await createFallbackUserProfile(user, displayName, photoUrlOverride);
             }
-            throw e; // 註冊模式就拋出錯誤，讓外面的邏輯處理
+            throw e;
         }
     };
 
     const handleGuestLogin = () => {
+        // FIX: Replaced non-existent 'completedMissionIds' with the required 'missions' property and added 'displayName'.
         const guestProfile: UserProfile = {
             id: 0,
             name: '訪客',
+            displayName: '訪客',
             avatarUrl: `https://picsum.photos/200/200?random=guest`,
             level: 1,
             xp: 0,
@@ -93,16 +94,14 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
             checkIns: 0,
             friends: [],
             notifications: [],
-            completedMissionIds: [],
+            missions: INITIAL_MISSIONS.map(m => ({ ...m, current: m.id === 'special_level_5' ? 1 : 0 })),
             hasReceivedWelcomeGift: false,
             latlng: { lat: 25.04, lng: 121.53 },
-            isGuest: true, // Set flag
+            isGuest: true,
         };
-        // Ensure guest sees welcome coupons
         localStorage.setItem('userCoupons', JSON.stringify(WELCOME_COUPONS));
         localStorage.setItem('userProfile', JSON.stringify(guestProfile));
         
-        // Guest always sees onboarding
         onLoginSuccess(guestProfile, true);
         navigate('/');
     };
@@ -112,8 +111,6 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
         setError('');
         setSuccessMessage('');
         
-        // For simulated mock login, we don't strictly need auth connection, 
-        // but for registration we do.
         if (!auth && mode === 'register') {
             setError('Firebase 未連線，無法註冊。請使用訪客模式。');
             return;
@@ -132,18 +129,13 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                         navigate('/');
                     }
                 } catch (firebaseErr: any) {
-                    // Fallback: Check Mock Users (Simulate Login)
-                    // This allows testing with 'ming@example.com' even if not in Firebase
                     const mockUser = MOCK_USERS.find(u => u.email === email && u.password === password);
                     if (mockUser) {
-                        console.log("Simulating login for Mock User:", mockUser.profile.name);
                         localStorage.setItem('userProfile', JSON.stringify(mockUser.profile));
-                        // Ensure we treat this as a valid login session
                         onLoginSuccess(mockUser.profile, false);
                         navigate('/');
                         return;
                     }
-                    // If not a mock user, re-throw error to be handled below
                     throw firebaseErr;
                 }
 
@@ -165,32 +157,21 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 if (userCredential.user) {
                     
-                    // 1. 決定最終的頭貼 (使用隨機圖)
-                    // 這樣可以確保 Auth 和 資料庫 存的是同一張圖
                     const finalAvatarUrl = `https://picsum.photos/200?random=${userCredential.user.uid}`;
 
-                    // 2. 更新 Firebase Auth (左邊選單看到的頭貼)
                     try {
                         await userCredential.user.updateProfile({
                             displayName: name,
-                            photoURL: finalAvatarUrl // 使用我們決定好的 URL
+                            photoURL: finalAvatarUrl
                         });
                     } catch (profileErr) {
                         console.warn("Auth profile update failed", profileErr);
                     }
 
-                    // 3. 呼叫後端 (資料庫裡的頭貼)
                     try {
-                        console.log("正在呼叫後端建立使用者...");
-                        console.log("- 暱稱:", name);
-
-                        // ✅ 這裡傳入 finalAvatarUrl (確保一定有值)
                         const newProfile = await createUserProfileInDB(userCredential.user, name, finalAvatarUrl);
-                        
-                        // 寫入 LocalStorage
                         localStorage.setItem('userProfile', JSON.stringify(newProfile));
-
-                        // 發送優惠券邏輯
+                        
                         const existingCoupons = JSON.parse(localStorage.getItem('userCoupons') || '[]');
                         const uniqueNewCoupons = WELCOME_COUPONS.filter(newC => 
                             !existingCoupons.some((existingC: Coupon) => existingC.title === newC.title)
@@ -205,17 +186,12 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                         }, 1500);
 
                     } catch (backendError: any) {
-                        console.error("後端建立失敗:", backendError);
                         const errorMessage = (backendError.message || String(backendError)).toLowerCase();
-                        
-                        // Check for specific error from our updated API
                         if (errorMessage.includes("此暱稱已被使用")) {
                             setError('此暱稱已被使用，請換一個。');
                         } else {
                             setError('帳號建立時發生錯誤，請聯繫客服或稍後再試。');
                         }
-                        
-                        // 刪除 Auth 帳號以保持一致性
                         userCredential.user.delete().catch(err => console.error("清除殘留帳號失敗", err));
                     }
                 }
@@ -227,7 +203,6 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                  }
             }
         } catch (err: any) {
-            // Only log unexpected errors to console
             if (err.code !== 'auth/invalid-credential' && err.code !== 'auth/user-not-found' && err.code !== 'auth/wrong-password') {
                 console.error("Auth error:", err);
             } else {
@@ -235,7 +210,9 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
             }
 
             let msg = '發生錯誤，請稍後再試。';
-            if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+            if (err.code === 'auth/network-request-failed') {
+                msg = '網路連線失敗。請檢查您的網路連線、防火牆設定，或嘗試使用不同的網路環境。';
+            } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
                 msg = '帳號或密碼錯誤。';
             } else if (err.code === 'auth/email-already-in-use') {
                 msg = '此電子郵件已被註冊。';

@@ -1,27 +1,21 @@
 
 
 
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { UserProfile } from '../types';
+import { UserProfile, ChatMessage } from '../types';
 import { BackIcon, PaperAirplaneIcon } from '../components/icons/ActionIcons';
-import { getFriends, updateUserProfile, getUserProfile } from '../utils/api';
+import { getFriends, updateUserProfile, getUserProfile, chatApi } from '../utils/api';
 import firebase, { db } from '../firebase/config';
 import { formatTime, formatDateHeader } from '../constants';
-
-interface Message {
-    id: string;
-    text: string;
-    senderId: number | string;
-    timestamp: any;
-}
 
 const ChatRoomPage: React.FC = () => {
     const { friendId } = useParams<{ friendId: string }>();
     const navigate = useNavigate();
     const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
     const [friend, setFriend] = useState<UserProfile | null>(null);
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(true);
 
@@ -84,10 +78,10 @@ const ChatRoomPage: React.FC = () => {
         const q = messagesRef.orderBy('timestamp', 'desc');
 
         const unsubscribe = q.onSnapshot((snapshot) => {
-            const msgs: Message[] = snapshot.docs.map(doc => ({
+            const msgs: ChatMessage[] = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
-            } as Message));
+            } as ChatMessage));
             setMessages(msgs);
         }, (error) => {
             const errorMsg = error.message || String(error);
@@ -105,20 +99,30 @@ const ChatRoomPage: React.FC = () => {
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newMessage.trim() || !currentUser || !db) return;
+        const textToSend = newMessage.trim();
+        if (!textToSend || !currentUser || !db) return;
+
+        setNewMessage('');
 
         const chatId = [String(currentUser.id), String(targetFriendId)].sort().join('_');
-        const messagesRef = db.collection('chats').doc(chatId).collection('messages');
-
+        
+        // Optimistic update
+        const optimisticMessage: ChatMessage = {
+            id: `local-${Date.now()}`,
+            text: textToSend,
+            senderId: currentUser.id,
+            timestamp: new Date(),
+        };
+        setMessages(prev => [optimisticMessage, ...prev]);
+        
         try {
-            await messagesRef.add({
-                text: newMessage.trim(),
-                senderId: currentUser.id,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            });
-            setNewMessage('');
+            await chatApi.sendMessage(chatId, textToSend, currentUser.id, targetFriendId);
         } catch (error) {
             console.error("Error sending message:", error);
+            // Revert optimistic update on failure
+            setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+            setNewMessage(textToSend); // Restore text
+            alert("訊息傳送失敗，請稍後再試。");
         }
     };
 

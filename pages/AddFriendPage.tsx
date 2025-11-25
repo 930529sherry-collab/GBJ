@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchableUser, UserProfile, FriendRequest } from '../types';
 import { BackIcon } from '../components/icons/ActionIcons';
+// FIX: Imported searchUsers from the API module to resolve an undefined reference.
 import { searchUsers, userApi, getUserProfile, addNotificationToUser } from '../utils/api';
 import { auth, db } from '../firebase/config';
 
@@ -29,28 +31,16 @@ const AddFriendPage: React.FC = () => {
              }
         });
 
-        // Real-time listener for friend requests
         let unsubscribeRequests = () => {};
         if (auth.currentUser) {
             setLoadingRequests(true);
-            const requestsRef = db.collection('users').doc(auth.currentUser.uid).collection('receivedFriendRequests');
+            const requestsRef = db.collection('users').doc(auth.currentUser.uid).collection('friendRequests');
             const q = requestsRef.where('status', '==', 'pending');
 
             unsubscribeRequests = q.onSnapshot((snapshot) => {
-                const requests: FriendRequest[] = [];
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    // Field mapping compatibility
-                    requests.push({
-                        id: doc.id,
-                        senderUid: data.fromUid || data.senderUid,
-                        senderName: data.from || data.senderName,
-                        senderAvatarUrl: data.senderAvatarUrl || '',
-                        status: data.status || 'pending',
-                        timestamp: data.timestamp,
-                        ...data
-                    } as FriendRequest);
-                });
+                const requests: FriendRequest[] = snapshot.docs.map(doc => ({
+                    id: doc.id, ...doc.data()
+                } as FriendRequest));
                 setPendingRequests(requests);
                 setLoadingRequests(false);
             }, (err) => {
@@ -131,37 +121,16 @@ const AddFriendPage: React.FC = () => {
     
     const handleRespond = async (request: FriendRequest, accept: boolean) => {
         try {
-            // Optimistic UI update: Remove locally first
             setPendingRequests(prev => prev.filter(r => r.id !== request.id));
-
-            await userApi.respondFriendRequest(request.senderUid, accept);
-            
+            // FIX: Corrected the call to userApi.respondFriendRequest to include request.id.
+            await userApi.respondFriendRequest(request.senderUid, accept, request.id);
             if (accept) {
                 setSuccessMessage("已接受好友邀請！");
-                
-                // Update local profile
-                if (currentUser) {
-                    const updatedFriends = [...(currentUser.friends || []), request.senderUid];
-                    const updatedUser = { ...currentUser, friends: updatedFriends };
-                    setCurrentUser(updatedUser);
-                    localStorage.setItem('userProfile', JSON.stringify(updatedUser));
-                }
-
-                // 延遲刷新，等待 Firestore 同步 (解決延遲問題)
-                await new Promise(r => setTimeout(r, 800)); 
-                
-                // Reload fresh profile from DB
-                if (currentUser) {
-                    const freshProfile = await getUserProfile(currentUser.id);
-                    setCurrentUser(freshProfile);
-                }
-
-                setTimeout(() => setSuccessMessage(''), 3000);
             }
         } catch (error) {
             console.error("Failed to respond:", error);
             setError("操作失敗，請稍後再試。");
-            setTimeout(() => setError(''), 3000);
+            // Optional: Re-add request to list on failure
         }
     };
 
@@ -179,7 +148,6 @@ const AddFriendPage: React.FC = () => {
                 </button>
             </div>
             
-            {/* Pending Requests Section - Placed at top */}
             {!loadingRequests && pendingRequests.length > 0 && (
                 <div className="bg-brand-secondary p-4 rounded-xl border-2 border-brand-accent/20 shadow-md mb-2">
                     <h3 className="text-lg font-bold text-brand-accent mb-3 px-1 flex items-center gap-2">
@@ -222,7 +190,6 @@ const AddFriendPage: React.FC = () => {
                 </div>
             )}
             
-            {/* Search Input */}
             <div className="relative">
                 <input
                     type="text"
@@ -244,8 +211,6 @@ const AddFriendPage: React.FC = () => {
                 </div>
             )}
 
-
-            {/* Search Results */}
             <div className="space-y-3">
                 {isLoading ? (
                      <div className="text-center p-10 text-brand-muted">搜尋中...</div>

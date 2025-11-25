@@ -1,8 +1,9 @@
 
 
-
 export interface Review {
-  id: number;
+  id: number | string; // Allow string for firestore
+  // FIX: Added optional authorId to track review authors by ID.
+  authorId?: string | number;
   author: string;
   rating: number;
   comment: string;
@@ -16,7 +17,7 @@ export interface MenuItem {
 }
 
 export interface Store {
-  id: number;
+  id: number | string;
   name: string;
   type: string;
   distance: string;
@@ -41,10 +42,12 @@ export interface Friend {
   avatarUrl: string;
   position: { top: string; left: string };
   latlng: { lat: number; lng: number };
+  distance?: number;
+  onlineStatus?: boolean;
 }
 
 export interface Deal {
-  id: number;
+  id: number | string;
   storeName: string;
   title: string;
   description: string;
@@ -52,14 +55,18 @@ export interface Deal {
 }
 
 export interface Mission {
-  id: number;
+  id: string; // e.g. 'daily_check_in'
   title: string;
   description: string;
-  reward: { xp?: number; points?: number };
-  progress: number;
-  goal: number;
-  claimed?: boolean;
+  xpReward: number;
+  pointsReward?: number;
+  type: 'daily' | 'special';
+  target: number; 
+  current: number;
+  status: 'ongoing' | 'completed';
+  claimed?: boolean; // For special missions that are permanently done
 }
+
 
 export interface UserProfile {
   id: number | string;
@@ -82,9 +89,12 @@ export interface UserProfile {
   notifications?: Notification[];
   hasReceivedWelcomeGift?: boolean;
   isGuest?: boolean; // New flag to identify guest users
-  completedMissionIds?: number[]; // Track IDs of claimed missions permanently
+  missions: Mission[]; // New mission system
+  dailyMissionLastReset?: string; // YYYY-MM-DD
   hasUnreadChats?: boolean; // Flag to show red dot on chat icon
   profileVisibility?: 'public' | 'friends' | 'private';
+  coupons?: Coupon[]; // Store coupons in the cloud
+  checkInHistory?: { storeId: string | number; storeName: string; timestamp: string; }[]; // Permanent check-in log
 }
 
 export interface Notification {
@@ -104,10 +114,12 @@ export interface MockUser {
 
 export interface Comment {
     id: number | string;
+    // FIX: Add optional authorId to track comment authors by ID.
+    authorId?: string | number;
     authorName: string;
     authorAvatarUrl: string;
     text: string;
-    timestamp: string;
+    timestamp: any; // Can be string or Firestore Timestamp
     storeName?: string;
 }
 
@@ -117,12 +129,13 @@ export interface FeedItem {
   friendId: number | string;
   friendName: string;
   friendAvatarUrl: string;
-  type: 'check-in' | 'mission-complete' | 'new-friend';
+  type?: 'check-in' | 'mission-complete' | 'new-friend';
   content: string;
+  storeId?: number | string; // NEW: Store ID for direct linking
   storeName?: string;
   missionTitle?: string;
   imageUrl?: string;
-  timestamp: string;
+  timestamp: any; // Can be string or Firestore Timestamp
   likes: number;
   isLiked: boolean;
   comments: Comment[];
@@ -130,6 +143,7 @@ export interface FeedItem {
   authorId?: string | number; // Explicit author ID for ownership checks
   visibility?: 'public' | 'friends' | 'private'; // New visibility field
 }
+
 
 export interface Order {
   id: string;
@@ -178,9 +192,9 @@ export interface Coupon {
 }
 
 export interface JournalEntry {
-  id: number;
+  id: string;
   userId: string | number; // Owner ID
-  storeId: number;
+  storeId: number | string; // Allow string
   storeName: string;
   drinkName: string;
   rating: number;
@@ -191,10 +205,17 @@ export interface JournalEntry {
 
 // New type for real-time friend requests from the subcollection
 export interface FriendRequest {
-    id: string; // This will be the document ID
+    id: string; // This will be the document ID from receivedFriendRequests subcollection
     senderUid: string;
     senderName: string;
     senderAvatarUrl: string;
     status: 'pending' | 'accepted' | 'declined';
     timestamp: any;
+}
+
+export interface ChatMessage {
+  id: string;
+  text: string;
+  senderId: string | number;
+  timestamp: any; // Firestore Timestamp
 }
