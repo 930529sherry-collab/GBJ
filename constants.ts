@@ -1,5 +1,4 @@
 
-
 import { Store, Deal, Mission, UserProfile, FeedItem, Order, RedeemItem, Coupon, MockUser } from './types';
 
 // Helper function to format date as YYYY-MM-DD

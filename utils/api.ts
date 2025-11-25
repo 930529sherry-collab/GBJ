@@ -1,5 +1,4 @@
 
-
 import firebase, { db, functions, auth, storage } from '../firebase/config';
 import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest, Deal, Mission } from '../types';
 import { WELCOME_COUPONS, INITIAL_MISSIONS, toDateObj, MOCK_DEALS } from '../constants';
@@ -60,7 +59,7 @@ export const getSystemMissions = async (): Promise<Mission[]> => {
         const q = db.collection('system_missions').where('isActive', '==', true);
         const snapshot = await q.get();
         if (snapshot.empty) {
-            console.warn("No active system missions found in Firestore. Falling back to constants.");
+            console.warn("No system missions found, returning local default.");
             return INITIAL_MISSIONS; // 找不到則返回本地預設值
         }
         // 將文件轉換為 Mission 類型並回傳
@@ -83,10 +82,25 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
         if (userDoc.exists) {
             let data = userDoc.data() || {};
             
-            // This is handled by the backend sync now, but we keep a light version for safety
+            // ★ 關鍵：任務回填邏輯 (Backfill logic for users without missions)
             if (!data.missions || data.missions.length === 0) {
-                 console.log(`User ${uid} has no missions. They will be synced from the backend shortly.`);
-                 data.missions = [];
+                console.log(`User ${uid} has no missions. Backfilling from system_missions...`);
+                // 呼叫上方的函式，從 Firestore 讀取任務
+                const systemMissions = await getSystemMissions(); 
+                
+                // 根據系統任務初始化用戶任務狀態
+                data.missions = systemMissions.map(m => ({
+                    ...m,
+                    current: 0,
+                    status: 'ongoing',
+                    claimed: false,
+                    ...(m.id === 'special_level_5' && { current: data.level || 1 })
+                }));
+                
+                // ★ 異步寫回 DB，讓任務永久儲存到用戶檔案中
+                userDocRef.update({ missions: data.missions }).catch(err => {
+                    console.error("Failed to backfill missions:", err);
+                });
             }
 
             return { 
@@ -103,7 +117,8 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
     } catch (error: any) { throw error; }
 };
 
-const initializeNewUserProfile = (firebaseUser: firebase.User, displayName: string, photoURL?: string): UserProfile => {
+const initializeNewUserProfile = async (firebaseUser: firebase.User, displayName: string, photoURL?: string): Promise<UserProfile> => {
+    const systemMissions = await getSystemMissions();
     return {
         id: firebaseUser.uid, name: displayName, displayName,
         avatarUrl: photoURL || `https://picsum.photos/200?random=${firebaseUser.uid}`,
@@ -114,19 +129,24 @@ const initializeNewUserProfile = (firebaseUser: firebase.User, displayName: stri
         notifications: [], hasReceivedWelcomeGift: true, isGuest: false,
         profileVisibility: 'friends',
         coupons: WELCOME_COUPONS,
-        missions: [], // Start with empty, will be populated by backend sync
+        missions: systemMissions.map(m => ({
+             ...m,
+             current: m.id === 'special_level_5' ? 1 : 0, // Start level 5 mission at current level 1
+             status: 'ongoing',
+             claimed: false
+        })),
         checkInHistory: [],
     };
 };
 
 export const createFallbackUserProfile = async (firebaseUser: firebase.User, displayName: string, photoURL?: string): Promise<UserProfile> => {
-    const newProfile = initializeNewUserProfile(firebaseUser, displayName, photoURL);
+    const newProfile = await initializeNewUserProfile(firebaseUser, displayName, photoURL);
     await db.collection("users").doc(firebaseUser.uid).set(newProfile);
     return newProfile;
 };
 
 export const createUserProfileInDB = async (firebaseUser: firebase.User, displayName: string, photoURL?: string): Promise<UserProfile> => {
-    const newProfile = initializeNewUserProfile(firebaseUser, displayName, photoURL);
+    const newProfile = await initializeNewUserProfile(firebaseUser, displayName, photoURL);
     await db.collection("users").doc(firebaseUser.uid).set(newProfile);
     return newProfile;
 };
@@ -189,11 +209,21 @@ export const syncUserStats = async (userId: string): Promise<void> => {
 // ============================================================================
 
 export const getStores = async (): Promise<Store[]> => {
+    if (!db) return [];
     try {
-        const result = await callFunction<{}, { stores: Store[] }>('getStores');
-        return result.stores || [];
-    } catch (e) {
-        console.error("Failed to get stores via cloud function", e);
+        const snapshot = await db.collection("stores").get();
+        if (snapshot.empty) return [];
+        
+        const storesFromDb = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Store));
+        const taipeiStores = storesFromDb.filter(store => store.address && store.address.includes('台北市'));
+        
+        const uniqueStoresMap = new Map<string, Store>();
+        taipeiStores.forEach(store => uniqueStoresMap.set(`${store.name}-${store.address}`, store));
+        
+        const uniqueStores: Store[] = [...uniqueStoresMap.values()];
+        return uniqueStores.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+    } catch (error) {
+        console.error("Failed to fetch stores from Firestore:", error);
         return [];
     }
 };
@@ -205,13 +235,22 @@ export const createStore = async (storeData: Store): Promise<void> => {
 };
 
 export const getDeals = async (): Promise<Deal[]> => {
-    try {
-        const result = await callFunction<{}, { deals: Deal[] }>('getDeals');
-        return result.deals || [];
-    } catch (e) {
-        console.error("Failed to get deals via cloud function", e);
-        return [];
+    let cloudDeals: Deal[] = [];
+    if (db) {
+        try {
+            const snapshot = await db.collection("deals").get();
+            if (!snapshot.empty) {
+                cloudDeals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Deal));
+            }
+        } catch (error) {
+            console.error("Failed to fetch deals from Firestore:", error);
+        }
     }
+    const combined = [...cloudDeals, ...MOCK_DEALS];
+    const uniqueMap = new Map<string, Deal>();
+    combined.forEach(deal => uniqueMap.set(`${deal.storeName}-${deal.title}`, deal));
+    const uniqueDeals = [...uniqueMap.values()];
+    return uniqueDeals.sort((a, b) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
 };
 
 export const getFriends = async (userId: number | string): Promise<UserProfile[]> => {
@@ -271,13 +310,10 @@ export const userApi = {
     sendNotification: (targetUid: string, message: string, type: string) => {
         return callFunction('sendNotification', { targetUid, message, type });
     },
-    syncAndResetMissions: async (): Promise<any> => {
-        console.log("Syncing and resetting missions via backend...");
-        return callFunction('syncAndResetMissions');
+    checkDailyMissions: async (): Promise<any> => {
+        console.log("Checking daily missions via backend...");
+        return callFunction('checkAndResetDailyMissions');
     },
-    triggerMissionProgress: (eventType: string, data?: any) => {
-        return callFunction('triggerMissionProgress', { eventType, data });
-    }
 };
 
 export const feedApi = {
@@ -333,6 +369,24 @@ export const chatApi = {
         return callFunction('markChatsAsRead', { userId: String(userId) });
     },
 };
+
+export const adminApi = {
+    importMissions: async (): Promise<void> => {
+        const user = auth.currentUser;
+        if (!user) {
+            alert("Please log in to import missions.");
+            return;
+        }
+        try {
+            await updateUserProfile(user.uid, { missions: INITIAL_MISSIONS });
+            alert("Missions imported successfully!");
+        } catch (error) {
+            console.error("Failed to import missions:", error);
+            alert("Failed to import missions.");
+        }
+    },
+};
+
 
 // ============================================================================
 // 6. Data Fetching & Subscriptions
@@ -397,7 +451,50 @@ export const addCheckInRecord = async (userId: string, storeId: string | number,
     } catch (e) { console.error("Failed to add check-in record:", e); }
 };
 
-// This function is now deprecated in favor of backend triggers
 export const updateAllMissionProgress = async (userId: string | number): Promise<void> => {
-   // console.log("Frontend mission update trigger is now handled by backend 'triggerMissionProgress' function.");
+    const uid = String(userId);
+    if (!uid || uid === '0') return;
+    
+    try {
+        const userProfile = await getUserProfile(uid);
+        if (!userProfile?.missions) return;
+
+        const updatedMissions: Mission[] = userProfile.missions.map(mission => {
+            let current = 0;
+            switch(mission.id) {
+                case 'daily_check_in':
+                     current = (userProfile.checkInHistory || []).filter(c => {
+                        const checkinDate = new Date(c.timestamp).toLocaleDateString();
+                        const todayDate = new Date().toLocaleDateString();
+                        return checkinDate === todayDate;
+                    }).length;
+                    break;
+                case 'special_first_friend':
+                    current = (userProfile.friends || []).length;
+                    break;
+                case 'special_level_5':
+                    current = userProfile.level;
+                    break;
+                 case 'special_reviewer':
+                     // This needs a more efficient way, but for now...
+                     // Let's assume this calculation is too slow and is handled by a backend trigger
+                     current = mission.current; // Keep existing progress
+                     break;
+                 // Add other mission calculations here
+            }
+
+            const newStatus: 'ongoing' | 'completed' = current >= mission.target ? 'completed' : 'ongoing';
+
+            return {
+                ...mission,
+                current: Math.min(current, mission.target),
+                status: newStatus,
+            };
+        });
+        
+        await updateUserProfile(uid, { missions: updatedMissions });
+
+    } catch (e) {
+        console.error("Failed to update mission progress:", e);
+    }
 };

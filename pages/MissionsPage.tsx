@@ -1,16 +1,12 @@
 
 
 
-
-
-
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Mission, Notification } from '../types';
 import { userApi, updateUserProfile, addNotificationToUser } from '../utils/api';
 import { auth, db } from '../firebase/config';
 import { CheckCircleIcon, StarIcon, CalendarIcon, ListBulletIcon } from '../components/icons/NavIcons';
 import { SparklesIcon, XIcon } from '../components/icons/ActionIcons';
-import { doc, onSnapshot } from "firebase/firestore";
 
 type TabType = 'all' | 'daily' | 'special' | 'completed';
 
@@ -55,12 +51,10 @@ const MissionsPage: React.FC = () => {
         const fetchUserAndCheckReset = async () => {
             if (auth.currentUser) {
                 try {
-                    // This is now called on App startup, but we can call it here too for redundancy on page visit.
-                    await userApi.syncAndResetMissions();
-                    
-                    const userRef = doc(db, 'users', auth.currentUser.uid);
-                    unsubscribe = onSnapshot(userRef, (doc) => {
-                        if (doc.exists()) {
+                    await userApi.checkDailyMissions();
+                    const userRef = db.collection('users').doc(auth.currentUser.uid);
+                    unsubscribe = userRef.onSnapshot((doc) => {
+                        if (doc.exists) {
                             setUser(doc.data() as UserProfile);
                         }
                         setLoading(false);
@@ -70,7 +64,7 @@ const MissionsPage: React.FC = () => {
                     setLoading(false);
                 }
             } else {
-                setLoading(false); // No user logged in
+                setLoading(false);
             }
         };
 
@@ -91,12 +85,7 @@ const MissionsPage: React.FC = () => {
         const initialLevel = user.level;
         const { xpReward = 0, pointsReward = 0 } = missionToClaim;
         
-        let updatedUser: UserProfile = { 
-            ...user, 
-            xp: user.xp + xpReward, 
-            points: (user.points || 0) + pointsReward,
-            missionsCompleted: (user.missionsCompleted || 0) + 1
-        };
+        const updatedUser: UserProfile = { ...user, xp: user.xp + xpReward, points: (user.points || 0) + pointsReward };
 
         // Handle level up
         while (updatedUser.xp >= updatedUser.xpToNextLevel) {
@@ -108,9 +97,10 @@ const MissionsPage: React.FC = () => {
         const updatedMissions = updatedUser.missions.map(m => {
             if (m.id === missionId) {
                 // Special missions are permanently claimed
-                if (m.type === 'special') return { ...m, claimed: true, status: 'completed' as 'completed' };
-                // Daily missions are marked as claimed for the day and will be reset by the backend
-                return { ...m, claimed: true, status: 'completed' as 'completed' };
+                if (m.type === 'special') return { ...m, claimed: true };
+                // Daily missions just give reward, will be reset by backend
+                // FIX: Cast 'completed' to its literal type to prevent type widening to 'string', ensuring it matches the 'Mission' interface.
+                return { ...m, status: 'completed' as 'completed' }; // keep as completed for the day
             }
             return m;
         });
@@ -118,8 +108,7 @@ const MissionsPage: React.FC = () => {
         updatedUser.missions = updatedMissions;
 
         try {
-            // FIX: Cast `user.id` to a string before passing it to `updateUserProfile` to match the expected type and resolve the TypeScript error.
-            await updateUserProfile(String(user.id), updatedUser);
+            await updateUserProfile(user.id, updatedUser);
             
             // Send notifications
             addNotificationToUser(String(user.id), `任務完成：「${missionToClaim.title}」！`, '任務通知');
@@ -141,14 +130,10 @@ const MissionsPage: React.FC = () => {
         const missions = user.missions || [];
 
         return missions.filter((mission: Mission) => {
-             // Permanently claimed special missions are hidden from all tabs
-            if (mission.type === 'special' && mission.claimed) {
-                return false;
-            }
-
+            if (mission.claimed) return false; // Hide permanently claimed missions
+            
             if (activeTab === 'completed') {
-                // Show completed but not yet claimed missions
-                return mission.status === 'completed' && !mission.claimed;
+                return mission.status === 'completed';
             }
             if (activeTab === 'daily') {
                 return mission.type === 'daily' && mission.status === 'ongoing';
@@ -184,7 +169,8 @@ const MissionsPage: React.FC = () => {
     return (
         <>
             <div className="animate-fade-in pb-24">
-                <h1 className="text-2xl font-bold text-brand-light px-6 pt-6 mb-4">任務中心</h1>
+                {/* FIX: Updated h1 title to be more engaging and consistent. */}
+                <h1 className="text-2xl font-bold text-brand-light px-6 pt-6 mb-4">喝酒任務</h1>
 
                 <div className="flex bg-brand-secondary border-b border-brand-accent/10 sticky top-0 z-10">
                     <TabButton id="all" label="全部" icon={<ListBulletIcon className="w-5 h-5"/>} />
@@ -196,8 +182,7 @@ const MissionsPage: React.FC = () => {
                 <div className="p-4 space-y-4">
                     {filteredMissions.length > 0 ? (
                         filteredMissions.map((mission) => {
-                            const isCompleted = mission.status === 'completed' && !mission.claimed;
-                            const progressPercent = Math.min((mission.current / mission.target) * 100, 100);
+                            const isCompleted = mission.status === 'completed';
                             return (
                                 <div key={mission.id} className="bg-brand-secondary p-4 rounded-xl border border-brand-accent/20 flex items-center gap-4">
                                     <div className={`w-12 h-12 rounded-full flex items-center justify-center ${mission.type === 'daily' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'}`}>
@@ -219,7 +204,7 @@ const MissionsPage: React.FC = () => {
                                             <div className="w-full bg-brand-primary h-2 rounded-full overflow-hidden border border-brand-accent/10">
                                                 <div 
                                                     className="bg-brand-accent h-full transition-all duration-500"
-                                                    style={{ width: `${progressPercent}%` }}
+                                                    style={{ width: `${Math.min((mission.current / mission.target) * 100, 100)}%` }}
                                                 ></div>
                                             </div>
                                         </div>

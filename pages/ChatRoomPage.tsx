@@ -2,8 +2,6 @@
 
 
 
-
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { UserProfile, ChatMessage } from '../types';
@@ -60,8 +58,7 @@ const ChatRoomPage: React.FC = () => {
                 if (foundFriend) {
                     setFriend(foundFriend);
                 } else {
-                    // FIX: Added the missing `missions: []` property to the fallback user profile object to satisfy the `UserProfile` type requirements.
-                    setFriend({ id: targetFriendId, name: `用戶 ${String(targetFriendId).substring(0,6)}...`, avatarUrl: 'https://picsum.photos/200', level: 0, xp: 0, xpToNextLevel: 0, points: 0, missionsCompleted: 0, checkIns: 0, friends: [], latlng: { lat: 0, lng: 0 }, missions: [] }); 
+                    setFriend({ id: targetFriendId, name: `用戶 ${String(targetFriendId).substring(0,6)}...`, avatarUrl: 'https://picsum.photos/200', level: 0, xp: 0, xpToNextLevel: 0, points: 0, missionsCompleted: 0, checkIns: 0, friends: [], latlng: { lat: 0, lng: 0 } }); 
                 }
             } catch (e) {
                 console.error("Error getting friend info", e);

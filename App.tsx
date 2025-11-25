@@ -1,7 +1,5 @@
 
 
-
-
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation, Link, Navigate, useNavigate } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
@@ -155,7 +153,7 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
         '/friends': '好友地圖',
         '/feed': '好友動態',
         '/deals': '店家優惠',
-        '/missions': '任務中心',
+        '/missions': '喝酒任務',
         '/profile': '個人檔案',
         '/orders': '我的訂單',
         '/profile/edit': '編輯個人檔案',
@@ -318,18 +316,16 @@ const App: React.FC = () => {
                     }
 
                     if (profile) {
-                        try {
-                            await userApi.syncAndResetMissions();
-                        } catch (e) {
-                            console.error("Critical mission sync failed:", e);
-                        }
-                        
+                        await userApi.checkDailyMissions();
                         await syncUserStats(user.uid);
-                        await grantWelcomePackage(user.uid);
+                        
+                        const rewardsGranted = await grantWelcomePackage(user.uid);
                         
                         let freshProfile = await getUserProfile(user.uid);
+                        // FIX: Changed function call from 'backfillWelcomeNotifications' to 'checkAndBackfillWelcomeNotifications' to match the actual exported function name from 'utils/api'.
                         const didBackfill = await checkAndBackfillWelcomeNotifications(user.uid, freshProfile);
-                        if(didBackfill) {
+
+                        if(rewardsGranted || didBackfill) {
                             freshProfile = await getUserProfile(user.uid);
                         }
 
