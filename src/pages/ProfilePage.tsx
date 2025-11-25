@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MOCK_USER_PROFILE, MISSIONS_FOR_IMPORT } from '../constants';

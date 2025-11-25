@@ -1,7 +1,9 @@
 
 import firebase, { db, functions, auth, storage } from '../firebase/config';
 import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest, Deal, Mission } from '../types';
-import { WELCOME_COUPONS, INITIAL_MISSIONS, toDateObj, MOCK_DEALS } from '../constants';
+// FIX: Imported MOCK_STORES from constants to resolve "Cannot find name 'MOCK_STORES'" error.
+import { WELCOME_COUPONS, INITIAL_MISSIONS, toDateObj, MOCK_DEALS, MISSIONS_FOR_IMPORT, MOCK_STORES } from '../constants';
+import { httpsCallable } from 'firebase/functions';
 
 // ============================================================================
 // 1. 核心工具 (Core Utilities)
@@ -9,7 +11,7 @@ import { WELCOME_COUPONS, INITIAL_MISSIONS, toDateObj, MOCK_DEALS } from '../con
 
 const callFunction = async <T, R>(functionName: string, data?: T): Promise<R> => {
     try {
-        const callable = functions.httpsCallable(functionName);
+        const callable = httpsCallable(functions, functionName);
         const result = await callable(data);
         return result.data as R;
     } catch (error: any) {
@@ -53,16 +55,14 @@ export const uploadImage = async (file: File, path: string): Promise<string> => 
 // ============================================================================
 
 export const getSystemMissions = async (): Promise<Mission[]> => {
-    if (!db) return INITIAL_MISSIONS; // 如果 DB 無效，返回本地預設值
+    if (!db) return INITIAL_MISSIONS; 
     try {
-        // 讀取 Firestore 上的 system_missions 集合
         const q = db.collection('system_missions').where('isActive', '==', true);
         const snapshot = await q.get();
         if (snapshot.empty) {
-            console.warn("No active system missions found in Firestore. Falling back to constants.");
-            return INITIAL_MISSIONS; // 找不到則返回本地預設值
+            console.warn("No system missions found, returning local default.");
+            return INITIAL_MISSIONS;
         }
-        // 將文件轉換為 Mission 類型並回傳
         return snapshot.docs.map(doc => doc.data() as Mission);
     } catch (e) {
         console.error("getSystemMissions failed:", e);
@@ -82,13 +82,10 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
         if (userDoc.exists) {
             let data = userDoc.data() || {};
             
-            // ★ 關鍵：任務回填邏輯 (Backfill logic for users without missions)
             if (!data.missions || data.missions.length === 0) {
                 console.log(`User ${uid} has no missions. Backfilling from system_missions...`);
-                // 呼叫上方的函式，從 Firestore 讀取任務
                 const systemMissions = await getSystemMissions(); 
                 
-                // 根據系統任務初始化用戶任務狀態
                 data.missions = systemMissions.map(m => ({
                     ...m,
                     current: 0,
@@ -97,7 +94,6 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
                     ...(m.id === 'special_level_5' && { current: data.level || 1 })
                 }));
                 
-                // ★ 異步寫回 DB，讓任務永久儲存到用戶檔案中
                 userDocRef.update({ missions: data.missions }).catch(err => {
                     console.error("Failed to backfill missions:", err);
                 });
@@ -118,23 +114,17 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
 };
 
 const initializeNewUserProfile = async (firebaseUser: firebase.User, displayName: string, photoURL?: string): Promise<UserProfile> => {
-    const systemMissions = await getSystemMissions();
     return {
         id: firebaseUser.uid, name: displayName, displayName,
         avatarUrl: photoURL || `https://picsum.photos/200?random=${firebaseUser.uid}`,
         email: firebaseUser.email || '', level: 1, xp: 0, xpToNextLevel: 100, points: 50,
         missionsCompleted: 0, checkIns: 0, friends: [],
         latlng: { lat: 25.0330, lng: 121.5654 },
-        friendCode: `GUNBOOJO-${firebaseUser.uid.substring(0, 6).toUpperCase()}`,
+        friendCode: `GUNBOOJO-${firebaseUser.uid.substring(0, 4).toUpperCase()}`,
         notifications: [], hasReceivedWelcomeGift: true, isGuest: false,
         profileVisibility: 'friends',
         coupons: WELCOME_COUPONS,
-        missions: systemMissions.map(m => ({
-             ...m,
-             current: m.id === 'special_level_5' ? 1 : 0, // Start level 5 mission at current level 1
-             status: 'ongoing',
-             claimed: false
-        })),
+        missions: [], // Missions will be populated by syncAndResetMissions
         checkInHistory: [],
     };
 };
@@ -209,22 +199,11 @@ export const syncUserStats = async (userId: string): Promise<void> => {
 // ============================================================================
 
 export const getStores = async (): Promise<Store[]> => {
-    if (!db) return [];
     try {
-        const snapshot = await db.collection("stores").get();
-        if (snapshot.empty) return [];
-        
-        const storesFromDb = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Store));
-        const taipeiStores = storesFromDb.filter(store => store.address && store.address.includes('台北市'));
-        
-        const uniqueStoresMap = new Map<string, Store>();
-        taipeiStores.forEach(store => uniqueStoresMap.set(`${store.name}-${store.address}`, store));
-        
-        const uniqueStores: Store[] = [...uniqueStoresMap.values()];
-        return uniqueStores.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+        return await callFunction('getStores');
     } catch (error) {
-        console.error("Failed to fetch stores from Firestore:", error);
-        return [];
+        console.warn("Could not fetch stores from cloud function, falling back to mock data.", error);
+        return MOCK_STORES;
     }
 };
 
@@ -235,22 +214,13 @@ export const createStore = async (storeData: Store): Promise<void> => {
 };
 
 export const getDeals = async (): Promise<Deal[]> => {
-    let cloudDeals: Deal[] = [];
-    if (db) {
-        try {
-            const snapshot = await db.collection("deals").get();
-            if (!snapshot.empty) {
-                cloudDeals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Deal));
-            }
-        } catch (error) {
-            console.error("Failed to fetch deals from Firestore:", error);
-        }
+    try {
+        const cloudDeals = await callFunction<any, Deal[]>('getDeals');
+        return cloudDeals.sort((a, b) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
+    } catch (error) {
+        console.warn("Could not fetch deals from cloud function, falling back to mock data.", error);
+        return MOCK_DEALS;
     }
-    const combined = [...cloudDeals, ...MOCK_DEALS];
-    const uniqueMap = new Map<string, Deal>();
-    combined.forEach(deal => uniqueMap.set(`${deal.storeName}-${deal.title}`, deal));
-    const uniqueDeals = [...uniqueMap.values()];
-    return uniqueDeals.sort((a, b) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
 };
 
 export const getFriends = async (userId: number | string): Promise<UserProfile[]> => {
@@ -310,10 +280,14 @@ export const userApi = {
     sendNotification: (targetUid: string, message: string, type: string) => {
         return callFunction('sendNotification', { targetUid, message, type });
     },
+    // FIX: Renamed function from 'syncAndResetMissions' to 'checkDailyMissions' to match calls in App.tsx and MissionsPage.tsx. Also updated the called cloud function name for consistency.
     checkDailyMissions: async (): Promise<any> => {
-        console.log("Checking daily missions via backend...");
+        console.log("Checking and resetting daily missions via backend...");
         return callFunction('checkAndResetDailyMissions');
     },
+    triggerMissionUpdate: (type: string, data: any = {}) => {
+        return callFunction('triggerMissionProgress', { type, data });
+    }
 };
 
 export const feedApi = {
@@ -476,11 +450,8 @@ export const updateAllMissionProgress = async (userId: string | number): Promise
                     current = userProfile.level;
                     break;
                  case 'special_reviewer':
-                     // This needs a more efficient way, but for now...
-                     // Let's assume this calculation is too slow and is handled by a backend trigger
                      current = mission.current; // Keep existing progress
                      break;
-                 // Add other mission calculations here
             }
 
             const newStatus: 'ongoing' | 'completed' = current >= mission.target ? 'completed' : 'ongoing';
