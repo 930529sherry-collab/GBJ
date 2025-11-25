@@ -63,9 +63,10 @@ export interface Mission {
   pointsReward?: number;
   type: 'daily' | 'special';
   target: number; 
-  current: number;
   status: 'ongoing' | 'completed';
-  claimed?: boolean; // For special missions that are permanently done
+  // Client-side only fields
+  current: number;
+  claimed?: boolean; 
 }
 
 export interface UserProfile {

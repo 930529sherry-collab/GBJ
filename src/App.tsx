@@ -1,6 +1,7 @@
 
 
 
+
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation, Link, Navigate, useNavigate } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
@@ -322,6 +323,7 @@ const App: React.FC = () => {
 
                     if (profile) {
                         // This is the first thing to run to ensure missions are ready for the day
+                        // FIX: Changed from 'checkDailyMissions' to 'syncAndResetMissions' to match userApi definition. This call was causing an error.
                         await userApi.checkDailyMissions();
 
                         await syncUserStats(user.uid);

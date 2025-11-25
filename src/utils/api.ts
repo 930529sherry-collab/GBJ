@@ -1,7 +1,6 @@
 
 import firebase, { db, functions, auth, storage } from '../firebase/config';
 import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest, Deal, Mission } from '../types';
-// FIX: Imported MOCK_STORES from constants to resolve "Cannot find name 'MOCK_STORES'" error.
 import { WELCOME_COUPONS, INITIAL_MISSIONS, toDateObj, MOCK_DEALS, MISSIONS_FOR_IMPORT, MOCK_STORES } from '../constants';
 import { httpsCallable } from 'firebase/functions';
 
@@ -280,10 +279,10 @@ export const userApi = {
     sendNotification: (targetUid: string, message: string, type: string) => {
         return callFunction('sendNotification', { targetUid, message, type });
     },
-    // FIX: Renamed function from 'syncAndResetMissions' to 'checkDailyMissions' to match calls in App.tsx and MissionsPage.tsx. Also updated the called cloud function name for consistency.
+    // FIX: Renamed 'syncAndResetMissions' to 'checkDailyMissions' to align with its usage in other files, resolving a property access error.
     checkDailyMissions: async (): Promise<any> => {
-        console.log("Checking and resetting daily missions via backend...");
-        return callFunction('checkAndResetDailyMissions');
+        console.log("Syncing and resetting missions via backend...");
+        return callFunction('syncAndResetMissions');
     },
     triggerMissionUpdate: (type: string, data: any = {}) => {
         return callFunction('triggerMissionProgress', { type, data });
@@ -450,8 +449,11 @@ export const updateAllMissionProgress = async (userId: string | number): Promise
                     current = userProfile.level;
                     break;
                  case 'special_reviewer':
+                     // This needs a more efficient way, but for now...
+                     // Let's assume this calculation is too slow and is handled by a backend trigger
                      current = mission.current; // Keep existing progress
                      break;
+                 // Add other mission calculations here
             }
 
             const newStatus: 'ongoing' | 'completed' = current >= mission.target ? 'completed' : 'ongoing';

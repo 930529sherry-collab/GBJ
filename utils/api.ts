@@ -2,6 +2,7 @@
 import firebase, { db, functions, auth, storage } from '../firebase/config';
 import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest, Deal, Mission } from '../types';
 import { WELCOME_COUPONS, INITIAL_MISSIONS, toDateObj, MOCK_DEALS } from '../constants';
+import { httpsCallable } from 'firebase/functions';
 
 // ============================================================================
 // 1. 核心工具 (Core Utilities)
@@ -125,7 +126,7 @@ const initializeNewUserProfile = async (firebaseUser: firebase.User, displayName
         email: firebaseUser.email || '', level: 1, xp: 0, xpToNextLevel: 100, points: 50,
         missionsCompleted: 0, checkIns: 0, friends: [],
         latlng: { lat: 25.0330, lng: 121.5654 },
-        friendCode: `GUNBOOJO-${firebaseUser.uid.substring(0, 6).toUpperCase()}`,
+        friendCode: `GUNBOOJO-${firebaseUser.uid.substring(0, 4).toUpperCase()}`,
         notifications: [], hasReceivedWelcomeGift: true, isGuest: false,
         profileVisibility: 'friends',
         coupons: WELCOME_COUPONS,
@@ -314,6 +315,9 @@ export const userApi = {
         console.log("Checking daily missions via backend...");
         return callFunction('checkAndResetDailyMissions');
     },
+    triggerMissionUpdate: (type: string, data: any = {}) => {
+        return callFunction('triggerMissionProgress', { type, data });
+    }
 };
 
 export const feedApi = {

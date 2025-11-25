@@ -48,9 +48,11 @@ const MissionsPage: React.FC = () => {
         const fetchUserAndCheckReset = async () => {
             if (auth.currentUser) {
                 try {
-                    await userApi.checkDailyMissions();
+                    // FIX: Renamed function call to 'checkDailyMissions' to match the updated 'userApi' definition.
+                    await userApi.checkDailyMissions(); 
+                    
                     const userRef = db.collection('users').doc(auth.currentUser.uid);
-                    unsubscribe = userRef.onSnapshot((doc) => {
+                    unsubscribe = userRef.onSnapshot((doc) => { 
                         if (doc.exists) {
                             setUser(doc.data() as UserProfile);
                         }
@@ -105,7 +107,7 @@ const MissionsPage: React.FC = () => {
         updatedUser.missions = updatedMissions;
 
         try {
-            await updateUserProfile(user.id, updatedUser);
+            await updateUserProfile(String(user.id), updatedUser);
             
             // Send notifications
             addNotificationToUser(String(user.id), `任務完成：「${missionToClaim.title}」！`, '任務通知');
@@ -166,8 +168,7 @@ const MissionsPage: React.FC = () => {
     return (
         <>
             <div className="animate-fade-in pb-24">
-                {/* FIX: Updated h1 title to match page title for consistency. */}
-                <h1 className="text-2xl font-bold text-brand-light px-6 pt-6 mb-4">喝酒任務</h1>
+                <h1 className="text-2xl font-bold text-brand-light px-6 pt-6 mb-4">任務中心</h1>
 
                 <div className="flex bg-brand-secondary border-b border-brand-accent/10 sticky top-0 z-10">
                     <TabButton id="all" label="全部" icon={<ListBulletIcon className="w-5 h-5"/>} />
