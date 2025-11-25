@@ -1,5 +1,4 @@
 
-
 import firebase, { db, functions, auth, storage } from '../firebase/config';
 import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest, Deal, Mission } from '../types';
 import { WELCOME_COUPONS, INITIAL_MISSIONS, toDateObj, MOCK_DEALS } from '../constants';
@@ -54,18 +53,20 @@ export const uploadImage = async (file: File, path: string): Promise<string> => 
 // ============================================================================
 
 export const getSystemMissions = async (): Promise<Mission[]> => {
-    if (!db) return INITIAL_MISSIONS;
+    if (!db) return INITIAL_MISSIONS; // 如果 DB 無效，返回本地預設值
     try {
+        // 讀取 Firestore 上的 system_missions 集合
         const q = db.collection('system_missions').where('isActive', '==', true);
         const snapshot = await q.get();
         if (snapshot.empty) {
             console.warn("No active system missions found in Firestore. Falling back to constants.");
-            return INITIAL_MISSIONS;
+            return INITIAL_MISSIONS; // 找不到則返回本地預設值
         }
+        // 將文件轉換為 Mission 類型並回傳
         return snapshot.docs.map(doc => doc.data() as Mission);
     } catch (e) {
         console.error("getSystemMissions failed:", e);
-        return INITIAL_MISSIONS; // Fallback to constants on error
+        return INITIAL_MISSIONS;
     }
 };
 
@@ -81,19 +82,22 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
         if (userDoc.exists) {
             let data = userDoc.data() || {};
             
-            // Backfill logic for users without missions
+            // ★ 關鍵：任務回填邏輯 (Backfill logic for users without missions)
             if (!data.missions || data.missions.length === 0) {
                 console.log(`User ${uid} has no missions. Backfilling from system_missions...`);
-                const systemMissions = await getSystemMissions();
+                // 呼叫上方的函式，從 Firestore 讀取任務
+                const systemMissions = await getSystemMissions(); 
+                
+                // 根據系統任務初始化用戶任務狀態
                 data.missions = systemMissions.map(m => ({
                     ...m,
                     current: 0,
                     status: 'ongoing',
                     claimed: false,
-                    // Special case for level mission to start with current level
                     ...(m.id === 'special_level_5' && { current: data.level || 1 })
                 }));
-                // Asynchronously write back to the DB so we don't do this every time
+                
+                // ★ 異步寫回 DB，讓任務永久儲存到用戶檔案中
                 userDocRef.update({ missions: data.missions }).catch(err => {
                     console.error("Failed to backfill missions:", err);
                 });
@@ -494,4 +498,3 @@ export const updateAllMissionProgress = async (userId: string | number): Promise
         console.error("Failed to update mission progress:", e);
     }
 };
-

@@ -77,7 +77,12 @@ const AddStorePage: React.FC = () => {
                     },
                 });
                 
-                const result = JSON.parse(response.text);
+                // FIX: Add robust handling for Gemini API response before parsing JSON.
+                const responseText = response.text;
+                if (!responseText) {
+                    throw new Error("AI address validation response was empty.");
+                }
+                const result = JSON.parse(responseText.trim());
 
                 if (!result.isValid) {
                     setError('請輸入一個真實有效的台灣地址。Gemini AI 無法驗證此地址。');

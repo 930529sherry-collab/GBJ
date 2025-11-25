@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Store, MenuItem, Review, UserProfile } from '../types';
@@ -222,7 +223,8 @@ const ReviewsTab: React.FC<{
         });
     };
 
-    const sortedReviews = [...reviews].sort((a, b) => b.id - a.id);
+    // FIX: Explicitly cast review IDs to numbers before sorting to prevent errors when subtracting mixed string/number types.
+    const sortedReviews = [...reviews].sort((a, b) => Number(b.id) - Number(a.id));
 
     return (
         <div className="space-y-4">

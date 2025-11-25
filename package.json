@@ -14,7 +14,8 @@
     "react-router-dom": "^7.9.2",
     "@google/genai": "^0.15.0",
     "leaflet": "^1.9.4",
-    "firebase": "^12.5.0"
+    "firebase": "^12.5.0",
+    "@firebase/firestore-types": "^3.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

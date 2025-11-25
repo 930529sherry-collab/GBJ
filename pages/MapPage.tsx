@@ -159,7 +159,12 @@ const MapPage: React.FC = () => {
                 },
             });
 
-            const result = JSON.parse(response.text);
+            // FIX: Add robust handling for Gemini API response before parsing JSON.
+            const responseText = response.text;
+            if (!responseText) {
+                throw new Error("AI response was empty.");
+            }
+            const result = JSON.parse(responseText.trim());
             const validatedRecs = result.recommendations.map((rec: { storeName: string; reason: string; }) => {
                 const store = stores.find(s => s.name === rec.storeName);
                 return store ? { ...rec, store } : null;

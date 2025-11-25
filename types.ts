@@ -1,8 +1,9 @@
 
 
+import { FirebaseFirestore } from "@firebase/firestore-types";
+
 export interface Review {
   id: number | string; // Allow string for firestore
-  // FIX: Added optional authorId to track review authors by ID.
   authorId?: string | number;
   author: string;
   rating: number;
@@ -67,7 +68,6 @@ export interface Mission {
   claimed?: boolean; // For special missions that are permanently done
 }
 
-
 export interface UserProfile {
   id: number | string;
   name?: string;
@@ -88,14 +88,16 @@ export interface UserProfile {
   displayName_lower?: string;
   notifications?: Notification[];
   hasReceivedWelcomeGift?: boolean;
+  hasReceivedWelcomeNotifications?: boolean; // New flag
   isGuest?: boolean; // New flag to identify guest users
   missions: Mission[]; // New mission system
-  dailyMissionLastReset?: string; // YYYY-MM-DD
+  lastResetDate?: string; // YYYY-MM-DD
   hasUnreadChats?: boolean; // Flag to show red dot on chat icon
   profileVisibility?: 'public' | 'friends' | 'private';
   coupons?: Coupon[]; // Store coupons in the cloud
   checkInHistory?: { storeId: string | number; storeName: string; timestamp: string; }[]; // Permanent check-in log
 }
+
 
 export interface Notification {
     id?: string;
@@ -114,7 +116,6 @@ export interface MockUser {
 
 export interface Comment {
     id: number | string;
-    // FIX: Add optional authorId to track comment authors by ID.
     authorId?: string | number;
     authorName: string;
     authorAvatarUrl: string;
@@ -217,5 +218,5 @@ export interface ChatMessage {
   id: string;
   text: string;
   senderId: string | number;
-  timestamp: any; // Firestore Timestamp
+  timestamp: any;
 }

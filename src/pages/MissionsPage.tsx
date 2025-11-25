@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Mission, Notification } from '../types';
 import { userApi, updateUserProfile, addNotificationToUser } from '../utils/api';
@@ -98,6 +97,7 @@ const MissionsPage: React.FC = () => {
                 // Special missions are permanently claimed
                 if (m.type === 'special') return { ...m, claimed: true };
                 // Daily missions just give reward, will be reset by backend
+                // FIX: Cast 'completed' to its literal type to prevent type widening to 'string', ensuring it matches the 'Mission' interface.
                 return { ...m, status: 'completed' as 'completed' }; // keep as completed for the day
             }
             return m;
@@ -167,7 +167,8 @@ const MissionsPage: React.FC = () => {
     return (
         <>
             <div className="animate-fade-in pb-24">
-                <h1 className="text-2xl font-bold text-brand-light px-6 pt-6 mb-4">喝酒任務</h1>
+                {/* FIX: Updated h1 title to match page title for consistency. */}
+                <h1 className="text-2xl font-bold text-brand-light px-6 pt-6 mb-4">任務中心</h1>
 
                 <div className="flex bg-brand-secondary border-b border-brand-accent/10 sticky top-0 z-10">
                     <TabButton id="all" label="全部" icon={<ListBulletIcon className="w-5 h-5"/>} />

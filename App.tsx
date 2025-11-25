@@ -1,5 +1,7 @@
 
 
+
+
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation, Link, Navigate, useNavigate } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
@@ -30,7 +32,7 @@ import { Store, UserProfile, Coupon, Notification, FriendRequest } from './types
 import AddStorePage from './pages/AddStorePage';
 import { GeolocationProvider, useGeolocation } from './context/GeolocationContext';
 import { GuestGuardProvider, useGuestGuard } from './context/GuestGuardContext';
-import { MOCK_STORES, WELCOME_COUPONS } from './constants';
+import { MOCK_STORES } from './constants';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import OnboardingPage from './pages/OnboardingPage';
@@ -39,8 +41,8 @@ import ChatListPage from './pages/ChatListPage';
 import ChatRoomPage from './pages/ChatRoomPage';
 import NotificationDrawer from './components/NotificationDrawer';
 import { auth, db } from './firebase/config';
+// FIX: The function is named 'checkAndBackfillWelcomeNotifications', not 'backfillWelcomeNotifications'. This corrects the import to match the exported function name in 'utils/api'.
 import { getUserProfile, grantWelcomePackage, getNotifications, syncUserStats, createFallbackUserProfile, checkAndBackfillWelcomeNotifications, userApi, updateUserProfile } from './utils/api';
-// FIX: Imported ViewJournalEntryPage to resolve a "Cannot find name" error.
 import ViewJournalEntryPage from './pages/ViewJournalEntryPage';
 
 
@@ -54,14 +56,12 @@ const FavoritesModal: React.FC<{ isOpen: boolean; onClose: () => void; }> = ({ i
         setLoading(true);
         setTimeout(() => {
             const allStores: Store[] = JSON.parse(localStorage.getItem('stores') || JSON.stringify(MOCK_STORES));
-            // FIX: Changed favoriteIds type to handle both number and string IDs, as store.id can be either.
             const favoriteIds: (number | string)[] = JSON.parse(localStorage.getItem('favoriteStoreIds') || '[]');
             setFavoriteStores(allStores.filter(store => favoriteIds.includes(store.id)));
             setLoading(false);
         }, 100);
     }, [isOpen]);
 
-    // FIX: Updated handleNavigate to accept both number and string to match the type of store.id.
     const handleNavigate = (storeId: number | string) => { onClose(); navigate(`/store/${storeId}`); };
     if (!isOpen) return null;
 
@@ -155,8 +155,7 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
         '/friends': '好友地圖',
         '/feed': '好友動態',
         '/deals': '店家優惠',
-        // FIX: Updated page title to match the title in MissionsPage.tsx.
-        '/missions': '喝酒任務',
+        '/missions': '任務中心',
         '/profile': '個人檔案',
         '/orders': '我的訂單',
         '/profile/edit': '編輯個人檔案',
@@ -283,7 +282,6 @@ const App: React.FC = () => {
     const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(false);
     
     useEffect(() => {
-        // Timeout to prevent getting stuck on splash screen if Firebase is unreachable
         const authTimeout = setTimeout(() => {
             setAuthStatus((currentStatus) => {
                 if (currentStatus === 'loading') {
@@ -295,7 +293,7 @@ const App: React.FC = () => {
         }, 8000);
 
         const unsubscribe = auth.onAuthStateChanged(async (user) => {
-            clearTimeout(authTimeout); // We got a response, cancel the timeout.
+            clearTimeout(authTimeout);
 
             if (user) {
                 try {
@@ -320,9 +318,12 @@ const App: React.FC = () => {
                     }
 
                     if (profile) {
-                        // This is the first thing to run to ensure missions are ready for the day
-                        await userApi.checkDailyMissions();
-
+                        try {
+                            await userApi.syncAndResetMissions();
+                        } catch (e) {
+                            console.error("Critical mission sync failed:", e);
+                        }
+                        
                         await syncUserStats(user.uid);
                         await grantWelcomePackage(user.uid);
                         
