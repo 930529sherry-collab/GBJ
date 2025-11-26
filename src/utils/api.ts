@@ -1,3 +1,4 @@
+
 import {
     doc,
     getDoc,
@@ -302,13 +303,18 @@ export const userApi = {
         const currentUser = auth.currentUser;
         if (!currentUser) throw new Error("AUTH_REQUIRED");
         try {
-            await callFunction('sendFriendRequest', { targetUid: String(targetUid) });
+            // Use friendId as required by the backend, ensuring it maps correctly
+            await callFunction('sendFriendRequest', { friendId: String(targetUid) });
         } catch (e) {
             console.warn("sendFriendRequest function failed, falling back to client-side write", e);
             const senderProfile = await getUserProfile(currentUser.uid);
             const requestDoc = {
+                // Aligning with backend schema for consistency
+                fromUid: currentUser.uid,
                 senderUid: currentUser.uid,
-                recipientId: String(targetUid), // Add recipientId for root collection query
+                toUid: String(targetUid),
+                recipientId: String(targetUid),
+                from: senderProfile.displayName || senderProfile.name || '新用戶',
                 senderName: senderProfile.displayName || senderProfile.name || '新用戶',
                 senderAvatarUrl: senderProfile.avatarUrl,
                 status: 'pending',
