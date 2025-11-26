@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ToggleSwitch from '../components/ToggleSwitch';
@@ -7,6 +8,7 @@ import { useGuestGuard } from '../context/GuestGuardContext';
 import { XIcon } from '../components/icons/ActionIcons';
 import { updateUserProfile } from '../utils/api';
 import { UserProfile } from '../types';
+// @-fix: Replaced modular 'sendPasswordResetEmail' import with compat syntax.
 
 interface PrivacySettings {
   profileVisibility: 'public' | 'friends' | 'private';
@@ -65,6 +67,7 @@ const ChangePasswordModal: React.FC<{
         if (!email || !auth) return;
         setStatus('sending');
         try {
+            // @-fix: Switched to compat syntax for sending password reset email.
             await auth.sendPasswordResetEmail(email);
             setStatus('success');
         } catch (err: any) {
@@ -205,7 +208,7 @@ const PrivacySettingsPage: React.FC = () => {
             const updatedProfile = { ...profile, profileVisibility: settings.profileVisibility };
             localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
             
-            if (!profile.isGuest && profile.id !== 0) {
+            if (!profile.isGuest && profile.id !== '0') {
                 try {
                     await updateUserProfile(String(profile.id), { profileVisibility: settings.profileVisibility });
                 } catch (e) {

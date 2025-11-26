@@ -1,13 +1,15 @@
 
 
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MOCK_USER_PROFILE, WELCOME_COUPONS, MOCK_USERS, INITIAL_MISSIONS } from '../constants';
+import { WELCOME_COUPONS, MOCK_USERS } from '../constants';
 import { UserProfile, Coupon } from '../types';
-import firebase, { auth } from '../firebase/config';
+import { auth } from '../firebase/config';
 import { BackIcon } from '../components/icons/ActionIcons';
 import { getUserProfile, createFallbackUserProfile, createUserProfileInDB } from '../utils/api';
+// @-fix: Remove modular imports and use compat syntax via the 'auth' object.
+// The User type is also available on the firebase namespace.
+import firebase from 'firebase/compat/app';
 
 const logoUrl = 'https://raw.githubusercontent.com/930529sherry-collab/gunboojo/56b3926c513c87c1cf6cbe82697e392cd03465e6/%E4%B9%BE%E4%B8%8D%E6%8F%AA%20%E5%BD%A9%E8%89%B2%E7%89%88.png';
 
@@ -66,23 +68,22 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
         setShowPasswordRequirements(false);
     }, [mode]);
 
-    const syncUserProfile = async (user: firebase.User, displayNameOverride?: string, photoUrlOverride?: string): Promise<UserProfile> => {
+    const syncUserProfile = async (user: firebase.User, displayNameOverride?: string): Promise<UserProfile> => {
         try {
             return await getUserProfile(user.uid);
         } catch (e: any) {
             const errorMsg = e.message || String(e);
             if (errorMsg.includes("User profile not found")) {
                 const displayName = displayNameOverride || user.displayName || name || '新用戶';
-                return await createFallbackUserProfile(user, displayName, photoUrlOverride);
+                return await createFallbackUserProfile(user, displayName);
             }
             throw e;
         }
     };
 
     const handleGuestLogin = () => {
-        // FIX: Replaced non-existent 'completedMissionIds' with the required 'missions' property and added 'displayName'.
         const guestProfile: UserProfile = {
-            id: 0,
+            id: '0',
             name: '訪客',
             displayName: '訪客',
             avatarUrl: `https://picsum.photos/200/200?random=guest`,
@@ -94,7 +95,7 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
             checkIns: 0,
             friends: [],
             notifications: [],
-            missions: INITIAL_MISSIONS.map(m => ({ ...m, current: m.id === 'special_level_5' ? 1 : 0 })),
+            missions: [],
             hasReceivedWelcomeGift: false,
             latlng: { lat: 25.04, lng: 121.53 },
             isGuest: true,
@@ -121,7 +122,8 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
         try {
             if (mode === 'login') {
                 try {
-                    const userCredential = await auth!.signInWithEmailAndPassword(email, password);
+                    // @-fix: Use compat syntax for sign-in.
+                    const userCredential = await auth.signInWithEmailAndPassword(email, password);
                     if (userCredential.user) {
                         const profile = await syncUserProfile(userCredential.user);
                         localStorage.setItem('userProfile', JSON.stringify(profile));
@@ -154,12 +156,14 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                     return;
                 }
 
+                // @-fix: Use compat syntax for user creation.
                 const userCredential = await auth.createUserWithEmailAndPassword(email, password);
                 if (userCredential.user) {
                     
                     const finalAvatarUrl = `https://picsum.photos/200?random=${userCredential.user.uid}`;
 
                     try {
+                        // @-fix: Use compat syntax for profile update.
                         await userCredential.user.updateProfile({
                             displayName: name,
                             photoURL: finalAvatarUrl
@@ -169,14 +173,8 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                     }
 
                     try {
-                        const newProfile = await createUserProfileInDB(userCredential.user, name, finalAvatarUrl);
+                        const newProfile = await createUserProfileInDB(userCredential.user, name);
                         localStorage.setItem('userProfile', JSON.stringify(newProfile));
-                        
-                        const existingCoupons = JSON.parse(localStorage.getItem('userCoupons') || '[]');
-                        const uniqueNewCoupons = WELCOME_COUPONS.filter(newC => 
-                            !existingCoupons.some((existingC: Coupon) => existingC.title === newC.title)
-                        );
-                        localStorage.setItem('userCoupons', JSON.stringify([...uniqueNewCoupons, ...existingCoupons]));
                         
                         setSuccessMessage('註冊成功！正在登入...');
                         
@@ -198,6 +196,7 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
 
             } else if (mode === 'forgot') {
                  if (auth) {
+                    // @-fix: Use compat syntax for sending reset email.
                     await auth.sendPasswordResetEmail(email);
                     setResetEmailSent(true);
                  }

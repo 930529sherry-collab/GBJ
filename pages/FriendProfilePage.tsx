@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FriendProfile, UserProfile, FeedItem, Comment, Store } from '../types';
@@ -178,7 +179,8 @@ const FriendProfilePage: React.FC = () => {
         setRequestError('');
 
         try {
-            await userApi.sendFriendRequest(friendId);
+// @-fix: Argument of type 'string | number' is not assignable to parameter of type 'string'.
+            await userApi.sendFriendRequest(String(friendId));
             
             const friendName = profile.displayName || profile.name || '該用戶';
             await addNotificationToUser(

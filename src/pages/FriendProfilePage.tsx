@@ -5,7 +5,7 @@ import { FriendProfile, UserProfile, FeedItem, Comment, Store } from '../types';
 import { BackIcon, XIcon } from '../components/icons/ActionIcons';
 import FeedCard from '../components/FeedCard';
 import { MOCK_STORES } from '../constants';
-import { getFriends, getUserFeed, feedApi, getUserProfile, userApi, addNotificationToUser, addCheckInRecord, updateAllMissionProgress } from '../utils/api';
+import { getFriends, getUserFeed, feedApi, getUserProfile, userApi, addNotificationToUser, addCheckInRecord, updateAllMissionProgress, getStores } from '../utils/api';
 
 const DeleteConfirmationModal: React.FC<{
     isOpen: boolean;
@@ -137,11 +137,14 @@ const FriendProfilePage: React.FC = () => {
         if (!currentUser) return;
 
         if (storeName) {
-            const savedStores = localStorage.getItem('stores');
-            const stores: Store[] = savedStores ? JSON.parse(savedStores) : MOCK_STORES;
-            const store = stores.find(s => s.name === storeName);
-            if (store) {
-                await addCheckInRecord(String(currentUser.id), store.id, store.name);
+            try {
+                const stores = await getStores();
+                const store = stores.find(s => s.name === storeName);
+                if (store) {
+                    await addCheckInRecord(String(currentUser.id), store.id, store.name);
+                }
+            } catch (error) {
+                console.error("Failed to fetch stores for check-in record:", error);
             }
         }
         
@@ -178,7 +181,8 @@ const FriendProfilePage: React.FC = () => {
         setRequestError('');
 
         try {
-            await userApi.sendFriendRequest(friendId);
+// @-fix: Argument of type 'string | number' is not assignable to parameter of type 'string'.
+            await userApi.sendFriendRequest(String(friendId));
             
             const friendName = profile.displayName || profile.name || '該用戶';
             await addNotificationToUser(

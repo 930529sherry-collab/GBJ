@@ -1,9 +1,10 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Notification, UserProfile } from '../types';
 import { BackIcon, BellIcon, ChevronDownIcon } from '../components/icons/ActionIcons';
-// FIX: Imported getNotifications from the API module to resolve an undefined function error.
+// @-fix: Imported getNotifications from the API module to resolve an undefined function error.
 import { getNotifications, updateUserProfile } from '../utils/api';
 import { formatDateTime, toDateObj } from '../constants';
 
@@ -77,7 +78,8 @@ const NotificationsPage: React.FC = () => {
             profile.notifications = updatedNotifications;
             localStorage.setItem('userProfile', JSON.stringify(profile));
             
-            if (profile.id !== 0 && !profile.isGuest) {
+// @-fix: This comparison appears to be unintentional because the types 'string' and 'number' have no overlap. Corrected to compare with string '0'.
+            if (profile.id !== '0' && !profile.isGuest) {
                 try {
                     await updateUserProfile(String(profile.id), { notifications: updatedNotifications });
                 } catch (e) {

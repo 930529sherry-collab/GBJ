@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Store, JournalEntry, UserProfile } from '../types';
 import { BackIcon, StarIcon, XIcon } from '../components/icons/ActionIcons';
 import { MOCK_STORES, formatDate } from '../constants';
-import { journalApi, updateAllMissionProgress } from '../utils/api';
+import { journalApi, updateAllMissionProgress, getStores } from '../utils/api';
 
 const EditJournalEntryPage: React.FC = () => {
     const navigate = useNavigate();
@@ -23,8 +24,13 @@ const EditJournalEntryPage: React.FC = () => {
 
     useEffect(() => {
         const loadData = async () => {
-            const savedStores = localStorage.getItem('stores');
-            setStores(savedStores ? JSON.parse(savedStores) : MOCK_STORES);
+            try {
+                const fetchedStores = await getStores();
+                setStores(fetchedStores);
+            } catch (error) {
+                console.error("Failed to load stores:", error);
+                setStores([]);
+            }
             
             const profileData = localStorage.getItem('userProfile');
             if (profileData) {
@@ -77,10 +83,10 @@ const EditJournalEntryPage: React.FC = () => {
         }
 
         setIsSaving(true);
-        const selectedStore = stores.find(s => s.id === Number(storeId));
+        const selectedStore = stores.find(s => String(s.id) === String(storeId));
 
         const entryData = {
-            storeId: Number(storeId) || 0,
+            storeId: storeId || 0,
             storeName: selectedStore?.name || '',
             drinkName: drinkName.trim(),
             rating,

@@ -1,10 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { MOCK_USER_PROFILE, MISSIONS_FOR_IMPORT } from '../constants';
-import { UserProfile, Mission } from '../types';
+import { MOCK_USER_PROFILE } from '../constants';
+import { UserProfile } from '../types';
 import { CoinIcon } from '../components/icons/ActionIcons';
 import { useGuestGuard } from '../context/GuestGuardContext';
-import { db } from '../firebase/config';
 
 const ProfilePage: React.FC = () => {
     const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -27,9 +27,9 @@ const ProfilePage: React.FC = () => {
         }, 500);
     }, [location]);
     
-    const handleCopyFriendCode = () => {
-        if (!profile || !profile.friendCode) return;
-        navigator.clipboard.writeText(profile.friendCode).then(() => {
+    const handleCopyAppId = () => {
+        if (!profile || !profile.appId) return;
+        navigator.clipboard.writeText(profile.appId).then(() => {
             setCopySuccess('已複製！');
             setTimeout(() => setCopySuccess(''), 2000);
         }, (err) => {
@@ -44,43 +44,13 @@ const ProfilePage: React.FC = () => {
             navigate(path);
         });
     };
-
-    const handleImportMissions = async () => {
-        const confirm = window.confirm("確定要將最新的任務定義匯入資料庫嗎？這會覆蓋 system_missions 集合。");
-        if (!confirm || !db) return;
-    
-        try {
-            const batch = db.batch();
-            const missionsCollection = db.collection('system_missions');
-    
-            // Optional: Clear existing missions first
-            const existingDocs = await missionsCollection.get();
-            existingDocs.forEach(doc => batch.delete(doc.ref));
-    
-            MISSIONS_FOR_IMPORT.forEach((mission) => {
-                const docRef = missionsCollection.doc(mission.id);
-                
-                // We are importing the master definition, so no 'current' or 'status'
-                const { id, ...missionData } = mission;
-                const finalData = { ...missionData, isActive: true };
-                
-                batch.set(docRef, finalData);
-            });
-    
-            await batch.commit();
-            alert("任務匯入成功！請至 Firebase Console 的 system_missions 集合檢查。");
-        } catch (error) {
-            console.error("任務匯入失敗:", error);
-            alert("匯入失敗，請查看 console 裡的錯誤訊息。");
-        }
-    };
     
     if (loading || !profile) {
         return <div className="text-center p-10 text-brand-accent">讀取個人檔案...</div>;
     }
     
     const xpPercentage = (profile.xp / profile.xpToNextLevel) * 100;
-    const isGuest = profile.id === 0 || profile.isGuest;
+    const isGuest = profile.id === '0' || profile.isGuest;
 
     return (
         <div className="space-y-6">
@@ -101,15 +71,15 @@ const ProfilePage: React.FC = () => {
                     {profile.phone && <p>{profile.phone}</p>}
                 </div>
 
-                {!isGuest && profile.friendCode && (
+                {!isGuest && profile.appId && (
                     <div className="w-full text-center pt-4">
-                        <p className="text-sm text-brand-muted mb-2">你的好友ID</p>
+                        <p className="text-sm text-brand-muted mb-2">你的 App ID</p>
                         <div className="flex items-center justify-center gap-2">
                             <span className="bg-brand-primary border border-brand-accent/30 text-brand-accent font-mono text-lg px-4 py-2 rounded-lg">
-                                {profile.friendCode}
+                                {profile.appId}
                             </span>
                             <button
-                                onClick={handleCopyFriendCode}
+                                onClick={handleCopyAppId}
                                 className="bg-brand-button-bg text-brand-light font-semibold py-2 px-4 rounded-lg hover:bg-brand-button-bg-hover transition-colors w-24"
                             >
                                 {copySuccess || '複製'}
@@ -129,7 +99,7 @@ const ProfilePage: React.FC = () => {
 
             <div className="grid grid-cols-3 gap-4 text-center">
                 <div className="bg-brand-secondary p-4 rounded-lg border-2 border-brand-accent/20">
-                    <p className="text-2xl font-bold text-brand-accent">{profile.missionsCompleted}</p>
+                    <p className="text-2xl font-bold text-brand-accent">{(profile.missions || []).filter(m => m.claimed).length}</p>
                     <p className="text-sm text-brand-muted">完成任務</p>
                 </div>
                 <div onClick={() => handleRestrictedClick('/friends-list')} className="bg-brand-secondary p-4 rounded-lg border-2 border-brand-accent/20 hover:border-brand-accent/50 transition-colors cursor-pointer">
@@ -182,15 +152,6 @@ const ProfilePage: React.FC = () => {
                 <Link to="/logout" className="block w-full text-left p-4 text-red-500 font-semibold hover:bg-red-500/10 transition-colors">
                     {isGuest ? '註冊 / 登入' : '登出'}
                 </Link>
-            </div>
-             {/* Temporary Admin Button */}
-             <div className="mt-8">
-                <button 
-                    onClick={handleImportMissions}
-                    className="w-full bg-red-800 text-white px-4 py-3 rounded-lg font-bold text-sm hover:bg-red-900 transition-colors"
-                >
-                    [管理員] 一鍵匯入任務到資料庫
-                </button>
             </div>
         </div>
     );

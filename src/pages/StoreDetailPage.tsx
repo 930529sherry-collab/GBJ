@@ -132,17 +132,11 @@ const StoreDetailPage: React.FC = () => {
                 if (foundStore) {
                     setStore(foundStore);
                 } else {
-                    // Fallback: Check localStorage if not found in API result (e.g. offline or legacy)
-                    const savedStores = localStorage.getItem('stores');
-                    const fallbackStores: Store[] = savedStores ? JSON.parse(savedStores) : MOCK_STORES;
-                    const foundLocal = fallbackStores.find(s => String(s.id) === id);
-                    setStore(foundLocal || null);
+                    setStore(null);
                 }
             } catch (error) {
                 console.error("Error loading store details:", error);
-                // Final Fallback to MOCK_STORES on error
-                const foundMock = MOCK_STORES.find(s => String(s.id) === id);
-                setStore(foundMock || null);
+                setStore(null);
             } finally {
                 setLoading(false);
             }
@@ -163,14 +157,10 @@ const StoreDetailPage: React.FC = () => {
 
         setStore(updatedStore);
 
-        // Ideally we should update Firestore here too, but for now keep local sync
-        const savedStoresString = localStorage.getItem('stores');
-        const allStores: Store[] = savedStoresString ? JSON.parse(savedStoresString) : MOCK_STORES;
-        // Compare using String to handle mixed types
-        const updatedAllStores = allStores.map(s => String(s.id) === String(store.id) ? updatedStore : s);
+        // Since we are not using localStorage for stores anymore, this local update is just for UI.
+        // The review addition to backend is handled in StoreDetail component via onUpdateReviews calling addReview (if implemented there) or we should call API here.
+        // For now, just UI update is fine as the user requested removing localStorage fallback for reading.
         
-        localStorage.setItem('stores', JSON.stringify(updatedAllStores));
-
         // New Trigger for Mission Progress
         if (currentUser && !currentUser.isGuest) {
             userApi.triggerMissionUpdate('review_added');

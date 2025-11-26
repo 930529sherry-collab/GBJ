@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Mission, Notification } from '../types';
 import { userApi, updateUserProfile, addNotificationToUser } from '../utils/api';
@@ -48,9 +50,7 @@ const MissionsPage: React.FC = () => {
         const fetchUserAndCheckReset = async () => {
             if (auth.currentUser) {
                 try {
-                    // FIX: Renamed function call to 'checkDailyMissions' to match the updated 'userApi' definition.
-                    await userApi.checkDailyMissions(); 
-                    
+                    // Mission sync is now handled by backend triggers.
                     const userRef = db.collection('users').doc(auth.currentUser.uid);
                     unsubscribe = userRef.onSnapshot((doc) => { 
                         if (doc.exists) {
@@ -95,11 +95,8 @@ const MissionsPage: React.FC = () => {
 
         const updatedMissions = updatedUser.missions.map(m => {
             if (m.id === missionId) {
-                // Special missions are permanently claimed
-                if (m.type === 'special') return { ...m, claimed: true };
-                // Daily missions just give reward, will be reset by backend
-                // FIX: Cast 'completed' to its literal type to prevent type widening to 'string', ensuring it matches the 'Mission' interface.
-                return { ...m, status: 'completed' as 'completed' }; // keep as completed for the day
+                // All missions are now permanently claimed, no more daily resets.
+                return { ...m, claimed: true };
             }
             return m;
         });

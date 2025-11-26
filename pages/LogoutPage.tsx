@@ -1,7 +1,9 @@
 
+
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../firebase/config';
+// @-fix: Replaced modular 'signOut' import with compat syntax.
 
 const LogoutPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const navigate = useNavigate();
@@ -19,6 +21,7 @@ const LogoutPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const handleLogout = async () => {
     if (auth) {
         try {
+            // @-fix: Switched to compat syntax for signing out.
             await auth.signOut();
             console.log("Signed out from Firebase");
         } catch (error) {

@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation, Link, Navigate, useNavigate } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
@@ -41,8 +38,8 @@ import ChatListPage from './pages/ChatListPage';
 import ChatRoomPage from './pages/ChatRoomPage';
 import NotificationDrawer from './components/NotificationDrawer';
 import { auth, db } from './firebase/config';
-import { getUserProfile, grantWelcomePackage, getNotifications, syncUserStats, createFallbackUserProfile, checkAndBackfillWelcomeNotifications, userApi, updateUserProfile } from './utils/api';
-// FIX: Imported ViewJournalEntryPage to resolve a "Cannot find name" error.
+import { getUserProfile, grantWelcomePackage, getNotifications, syncUserStats, createFallbackUserProfile, checkAndBackfillWelcomeNotifications, userApi, updateUserProfile, getStores } from './utils/api';
+// @-fix: Imported ViewJournalEntryPage to resolve a "Cannot find name" error.
 import ViewJournalEntryPage from './pages/ViewJournalEntryPage';
 
 
@@ -54,16 +51,24 @@ const FavoritesModal: React.FC<{ isOpen: boolean; onClose: () => void; }> = ({ i
     useEffect(() => {
         if (!isOpen) return;
         setLoading(true);
-        setTimeout(() => {
-            const allStores: Store[] = JSON.parse(localStorage.getItem('stores') || JSON.stringify(MOCK_STORES));
-            // FIX: Changed favoriteIds type to handle both number and string IDs, as store.id can be either.
-            const favoriteIds: (number | string)[] = JSON.parse(localStorage.getItem('favoriteStoreIds') || '[]');
-            setFavoriteStores(allStores.filter(store => favoriteIds.includes(store.id)));
-            setLoading(false);
-        }, 100);
+        
+        const fetchFavorites = async () => {
+             try {
+                const allStores = await getStores();
+                // @-fix: Changed favoriteIds type to handle both number and string IDs, as store.id can be either.
+                const favoriteIds: (number | string)[] = JSON.parse(localStorage.getItem('favoriteStoreIds') || '[]');
+                setFavoriteStores(allStores.filter(store => favoriteIds.includes(store.id) || favoriteIds.includes(String(store.id)) || favoriteIds.includes(Number(store.id))));
+             } catch (e) {
+                 console.error("Failed to fetch favorite stores:", e);
+                 setFavoriteStores([]);
+             } finally {
+                 setLoading(false);
+             }
+        };
+        fetchFavorites();
     }, [isOpen]);
 
-    // FIX: Updated handleNavigate to accept both number and string to match the type of store.id.
+    // @-fix: Updated handleNavigate to accept both number and string to match the type of store.id.
     const handleNavigate = (storeId: number | string) => { onClose(); navigate(`/store/${storeId}`); };
     if (!isOpen) return null;
 
@@ -136,7 +141,7 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
     }, [currentUser]);
 
     useEffect(() => {
-        if (userPosition && currentUser && !currentUser.isGuest && currentUser.id !== 0) {
+        if (userPosition && currentUser && !currentUser.isGuest && currentUser.id !== '0') {
             updateUserProfile(String(currentUser.id), { latlng: userPosition })
                 .catch(err => console.error("Failed to sync location", err));
         }
@@ -157,8 +162,8 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
         '/friends': '好友地圖',
         '/feed': '好友動態',
         '/deals': '店家優惠',
-// FIX: Updated page title to match the title in MissionsPage.tsx.
-        '/missions': '喝酒任務',
+// @-fix: Updated page title to match the title in MissionsPage.tsx.
+        '/missions': '任務中心',
         '/profile': '個人檔案',
         '/orders': '我的訂單',
         '/profile/edit': '編輯個人檔案',
@@ -202,7 +207,7 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
       <div className="h-screen w-full bg-brand-primary flex flex-col font-sans relative overflow-hidden">
         <BackgroundMap />
         {currentUser?.isGuest && <div className="fixed top-0 left-0 right-0 bg-brand-accent text-brand-primary text-center text-xs font-bold py-1 z-20">訪客模式</div>}
-        <header className={`sticky top-0 z-10 h-16 bg-brand-primary/80 backdrop-blur-md flex items-center justify-center p-4 border-b border-brand-accent/20 flex-shrink-0`}>
+        <header className={'sticky top-0 z-10 h-16 bg-brand-primary/80 backdrop-blur-md flex items-center justify-center p-4 border-b border-brand-accent/20 flex-shrink-0'}>
             <div className="absolute top-1/2 -translate-y-1/2 left-4">
                 {showRefreshButton && (
                     <button onClick={handleRefresh} className="text-brand-light hover:text-brand-accent p-2 rounded-full transition-colors">
@@ -223,13 +228,6 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
                         </button>
                     </>
                 )}
-                
-                {!isSocialPage && (
-                     <button onClick={() => setIsFavoritesModalOpen(true)} className="text-brand-light hover:text-brand-accent p-2 rounded-full transition-colors">
-                        <HeartIcon />
-                    </button>
-                )}
-
                 {showNotificationButton && (
                      <button onClick={() => checkGuest(() => setIsNotificationOpen(true))} className="text-brand-light hover:text-brand-accent p-2 rounded-full transition-colors relative">
                         {hasUnread && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
@@ -285,7 +283,6 @@ const App: React.FC = () => {
     const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(false);
     
     useEffect(() => {
-        // Timeout to prevent getting stuck on splash screen if Firebase is unreachable
         const authTimeout = setTimeout(() => {
             setAuthStatus((currentStatus) => {
                 if (currentStatus === 'loading') {
@@ -297,55 +294,41 @@ const App: React.FC = () => {
         }, 8000);
 
         const unsubscribe = auth.onAuthStateChanged(async (user) => {
-            clearTimeout(authTimeout); // We got a response, cancel the timeout.
+            clearTimeout(authTimeout);
 
             if (user) {
                 try {
-                    let profile: UserProfile | null = null;
+                    // Critical user setup and data sync. Mission sync is now handled by backend triggers.
+                    const profile = await getUserProfile(user.uid);
                     
-                    try {
-                        profile = await getUserProfile(user.uid);
-                    } catch (error: any) {
-                        if (error.message.includes("User profile not found")) {
-                             console.warn("Attempting to self-heal by creating fallback profile...");
-                             const tempProfileStr = localStorage.getItem('userProfile');
-                             const tempProfile = tempProfileStr ? JSON.parse(tempProfileStr) : {};
-                             
-                             profile = await createFallbackUserProfile(
-                                 user, 
-                                 tempProfile.displayName || user.displayName || '用戶',
-                                 tempProfile.avatarUrl || user.photoURL
-                             );
-                        } else {
-                            throw error;
-                        }
+                    if (!profile.hasReceivedWelcomeGift) {
+                         const granted = await grantWelcomePackage(user.uid);
+                         if (granted) profile.hasReceivedWelcomeGift = true;
                     }
 
-                    if (profile) {
-                        // This is the first thing to run to ensure missions are ready for the day
-                        // FIX: Changed from 'checkDailyMissions' to 'syncAndResetMissions' to match userApi definition. This call was causing an error.
-                        await userApi.checkDailyMissions();
-
-                        await syncUserStats(user.uid);
-                        await grantWelcomePackage(user.uid);
-                        
-                        let freshProfile = await getUserProfile(user.uid);
-                        const didBackfill = await checkAndBackfillWelcomeNotifications(user.uid, freshProfile);
-                        if(didBackfill) {
-                            freshProfile = await getUserProfile(user.uid);
-                        }
-
-                        localStorage.setItem('userProfile', JSON.stringify(freshProfile));
-                        setCurrentUser(freshProfile);
-                        setHasCompletedOnboarding(localStorage.getItem('hasCompletedOnboarding') === 'true');
-                        setAuthStatus('authed');
-                    } else {
-                        throw new Error("Profile could not be retrieved or created.");
-                    }
+                    await checkAndBackfillWelcomeNotifications(user.uid, profile);
+                    await syncUserStats(user.uid);
+                    
+                    localStorage.setItem('userProfile', JSON.stringify(profile));
+                    setCurrentUser(profile);
+                    setHasCompletedOnboarding(localStorage.getItem('hasCompletedOnboarding') === 'true');
+                    setAuthStatus('authed');
                     
                 } catch (error: any) {
                     console.error("Critical error during user sync:", error.message);
-                    handleLogout();
+                    if (error.message && error.message.includes("User profile not found")) {
+                        try {
+                            const fallbackProfile = await createFallbackUserProfile(user, user.displayName || '新用戶');
+                            setCurrentUser(fallbackProfile);
+                            setHasCompletedOnboarding(false);
+                            setAuthStatus('authed');
+                        } catch (fallbackError) {
+                            console.error("Failed to create fallback profile:", fallbackError);
+                            handleLogout();
+                        }
+                    } else {
+                         handleLogout();
+                    }
                 }
             } else {
                 handleLogout();

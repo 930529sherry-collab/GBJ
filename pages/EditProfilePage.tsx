@@ -1,10 +1,12 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MOCK_USER_PROFILE } from '../constants';
 import { UserProfile } from '../types';
 import { updateUserProfile, getUserProfile, uploadImage } from '../utils/api';
 import { auth } from '../firebase/config';
+// @-fix: Replaced modular 'updateProfile' import with compat syntax which is accessed via auth.currentUser.
 
 const EditProfilePage: React.FC = () => {
     const navigate = useNavigate();
@@ -61,7 +63,8 @@ const EditProfilePage: React.FC = () => {
             let finalAvatarUrl = profile.avatarUrl; // Use existing URL by default
 
             // 0. 如果有選新圖片，先上傳到 Storage
-            if (selectedFile && profile.id !== 0) {
+            // @-fix: Corrected unintentional type comparison from '0' (number) to "'0'" (string).
+            if (selectedFile && profile.id !== '0') {
                 console.log("正在上傳圖片到 Storage...");
                 finalAvatarUrl = await uploadImage(selectedFile, `avatars/${uid}_${Date.now()}.jpg`);
             }
@@ -76,7 +79,8 @@ const EditProfilePage: React.FC = () => {
             };
 
             // 2. 更新 Firestore 資料庫
-            if (profile.id !== 0 && profile.id !== '0') {
+            // @-fix: Corrected unintentional type comparison from '0' (number) to "'0'" (string).
+            if (profile.id !== '0') {
                  console.log("正在更新資料庫...");
                  await updateUserProfile(uid, updates);
             }
@@ -84,6 +88,7 @@ const EditProfilePage: React.FC = () => {
             // 3. 更新 Firebase Auth (現在網址變短了，可以安全更新)
             if (auth.currentUser) {
                 console.log("正在更新 Auth Profile...");
+                // @-fix: Switched to compat syntax for updating user profile.
                 await auth.currentUser.updateProfile({
                     displayName: name,
                     photoURL: finalAvatarUrl 
@@ -95,7 +100,8 @@ const EditProfilePage: React.FC = () => {
             let latestProfile: UserProfile;
             
             try {
-                if (profile.id !== 0 && profile.id !== '0') {
+                // @-fix: Corrected unintentional type comparison from '0' (number) to "'0'" (string).
+                if (profile.id !== '0') {
                     // Fetch fresh profile to get any server-side changes
                     latestProfile = await getUserProfile(uid);
                 } else {
@@ -157,6 +163,7 @@ const EditProfilePage: React.FC = () => {
                         onChange={(e) => setName(e.target.value)}
                         className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-2 text-brand-light focus:ring-brand-accent focus:border-brand-accent"
                         placeholder="你的暱稱"
+                        required
                     />
                 </div>
                 <div>

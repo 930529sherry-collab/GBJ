@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { XIcon, BellIcon, ChevronDownIcon } from './icons/ActionIcons';
 import { UserPlusIcon } from './icons/NavIcons';
 import { UserProfile, Notification, FriendRequest } from '../types';
-// FIX: Imported getNotifications from the API module to resolve an undefined reference.
+// @-fix: Imported getNotifications from the API module to resolve an undefined reference.
 import { getUserProfile, userApi, getNotifications, updateUserProfile, addNotificationToUser, updateAllMissionProgress, syncUserStats } from '../utils/api';
 import { auth, db } from '../firebase/config';
 import { formatDateTime, toDateObj } from '../constants';
@@ -74,7 +73,7 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
         finally { setLoading(false); }
     };
 
-    // FIX: Implemented handleNotificationClick to mark notifications as read.
+    // @-fix: Implemented handleNotificationClick to mark notifications as read.
     const handleNotificationClick = async (notif: Notification) => {
         if (notif.read) return;
 

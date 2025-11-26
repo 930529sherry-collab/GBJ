@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MOCK_REDEEM_ITEMS, MOCK_USER_PROFILE, MOCK_COUPONS, formatDate, addDays } from '../constants';
@@ -211,7 +212,8 @@ const RedeemPage: React.FC = () => {
         return <div className="text-center p-10 text-brand-accent">讀取中...</div>;
     }
     
-    const isGuest = profile.id === 0 || profile.isGuest;
+    // @-fix: Corrected unintentional type comparison from '0' (number) to "'0'" (string).
+    const isGuest = profile.id === '0' || profile.isGuest;
 
     return (
         <>

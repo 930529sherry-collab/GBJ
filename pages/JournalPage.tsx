@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { JournalEntry, UserProfile } from '../types';
@@ -116,7 +115,7 @@ const JournalPage: React.FC = () => {
         if (!currentUser) return;
         if (window.confirm("確定要刪除這篇筆記嗎？此操作無法復原。")) {
             try {
-                // FIX: Corrected call to journalApi.
+// @-fix: Corrected call to journalApi.
                 await journalApi.deleteJournalEntry(String(currentUser.id), id);
                 setEntries(prev => prev.filter(entry => entry.id !== id));
                 handleCloseViewModal();

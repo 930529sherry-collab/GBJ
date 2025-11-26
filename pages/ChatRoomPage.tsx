@@ -1,13 +1,11 @@
 
-
-
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { UserProfile, ChatMessage } from '../types';
 import { BackIcon, PaperAirplaneIcon } from '../components/icons/ActionIcons';
-import { getFriends, updateUserProfile, getUserProfile, chatApi } from '../utils/api';
-import firebase, { db } from '../firebase/config';
+import { getFriends, updateUserProfile, getUserProfile, chatApi, userApi } from '../utils/api';
+import { db } from '../firebase/config';
+import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 import { formatTime, formatDateHeader } from '../constants';
 
 const ChatRoomPage: React.FC = () => {
@@ -31,19 +29,20 @@ const ChatRoomPage: React.FC = () => {
             const user: UserProfile = JSON.parse(profileData);
             setCurrentUser(user);
             
-            // Mark messages as read (clear global unread flag)
+// @-fix: Property 'hasUnreadChats' does not exist on type 'UserProfile'. Added hasUnreadChats to UserProfile in types.ts
             if (user.hasUnreadChats) {
                 const updatedUser = { ...user, hasUnreadChats: false };
                 localStorage.setItem('userProfile', JSON.stringify(updatedUser));
                 setCurrentUser(updatedUser);
-                if (user.id !== 0) {
+// @-fix: 'hasUnreadChats' does not exist in type 'Partial<UserProfile>'. Added hasUnreadChats to UserProfile in types.ts
+                if (user.id !== '0' && !user.isGuest) {
                     updateUserProfile(String(user.id), { hasUnreadChats: false })
                         .catch(e => console.error("Failed to clear unread status", e));
                 }
             }
 
             try {
-                const friends = await getFriends(user.id);
+                const friends = await getFriends(String(user.id));
                 let foundFriend = friends.find(f => String(f.id) === String(targetFriendId));
                 
                 if (!foundFriend) {
@@ -58,7 +57,7 @@ const ChatRoomPage: React.FC = () => {
                 if (foundFriend) {
                     setFriend(foundFriend);
                 } else {
-                    setFriend({ id: targetFriendId, name: `用戶 ${String(targetFriendId).substring(0,6)}...`, avatarUrl: 'https://picsum.photos/200', level: 0, xp: 0, xpToNextLevel: 0, points: 0, missionsCompleted: 0, checkIns: 0, friends: [], latlng: { lat: 0, lng: 0 } }); 
+                    setFriend({ id: targetFriendId, name: `用戶 ${String(targetFriendId).substring(0,6)}...`, avatarUrl: 'https://picsum.photos/200', level: 0, xp: 0, xpToNextLevel: 0, points: 0, checkIns: 0, friends: [], latlng: { lat: 0, lng: 0 }, missions: [] }); 
                 }
             } catch (e) {
                 console.error("Error getting friend info", e);
@@ -68,30 +67,21 @@ const ChatRoomPage: React.FC = () => {
         initChat();
     }, [targetFriendId, navigate]);
 
-    // Real-time Firestore Listener
     useEffect(() => {
-        if (!currentUser || !db) return;
+        if (!currentUser) return;
 
         const chatId = [String(currentUser.id), String(targetFriendId)].sort().join('_');
-        const messagesRef = db.collection('chats').doc(chatId).collection('messages');
-        // Order by DESC (Newest first) for inverted list
-        const q = messagesRef.orderBy('timestamp', 'desc');
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+        const q = query(messagesRef, orderBy('timestamp', 'desc'));
 
-        const unsubscribe = q.onSnapshot((snapshot) => {
+        const unsubscribe = onSnapshot(q, (snapshot) => {
             const msgs: ChatMessage[] = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             } as ChatMessage));
             setMessages(msgs);
         }, (error) => {
-            const errorMsg = error.message || String(error);
-            if (error.code === 'permission-denied' || errorMsg.includes('Missing or insufficient permissions') || errorMsg.includes('permission-denied')) {
-                console.warn("Chat listener permission denied.");
-                // Stop loading if it was the initial load
-                setLoading(false); 
-            } else {
-                console.error("Chat listener error:", error);
-            }
+            console.error("Chat listener error:", error);
         });
 
         return () => unsubscribe();
@@ -100,13 +90,11 @@ const ChatRoomPage: React.FC = () => {
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         const textToSend = newMessage.trim();
-        if (!textToSend || !currentUser || !db) return;
+        if (!textToSend || !currentUser) return;
 
         setNewMessage('');
-
         const chatId = [String(currentUser.id), String(targetFriendId)].sort().join('_');
         
-        // Optimistic update
         const optimisticMessage: ChatMessage = {
             id: `local-${Date.now()}`,
             text: textToSend,
@@ -117,11 +105,12 @@ const ChatRoomPage: React.FC = () => {
         
         try {
             await chatApi.sendMessage(chatId, textToSend, currentUser.id, targetFriendId);
+            // New Trigger for Mission Progress (Daily Chat)
+            userApi.triggerMissionUpdate('chat_sent');
         } catch (error) {
             console.error("Error sending message:", error);
-            // Revert optimistic update on failure
             setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
-            setNewMessage(textToSend); // Restore text
+            setNewMessage(textToSend);
             alert("訊息傳送失敗，請稍後再試。");
         }
     };
@@ -143,14 +132,12 @@ const ChatRoomPage: React.FC = () => {
                 )}
             </div>
 
-            {/* Messages Area - Inverted Layout (flex-col-reverse) */}
+            {/* Messages Area */}
             <div className="flex-grow overflow-y-auto p-4 space-y-4 space-y-reverse flex flex-col-reverse bg-brand-primary">
                 {messages.map((msg, index) => {
                     const isMe = String(msg.senderId) === String(currentUser?.id);
                     const currentDate = formatDateHeader(msg.timestamp);
                     
-                    // Check if we need a date header AFTER this message (visually ABOVE)
-                    // Compare with the NEXT message in the array (which is older)
                     const nextMsg = messages[index + 1];
                     const prevDate = nextMsg ? formatDateHeader(nextMsg.timestamp) : null;
                     const showDateHeader = currentDate !== prevDate;
@@ -158,13 +145,7 @@ const ChatRoomPage: React.FC = () => {
                     return (
                         <React.Fragment key={msg.id}>
                             <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                <div 
-                                    className={`max-w-[75%] px-4 py-2 rounded-2xl text-base shadow-sm break-words ${
-                                        isMe 
-                                        ? 'bg-brand-brown-cta text-brand-text-on-accent rounded-br-none' 
-                                        : 'bg-brand-secondary text-brand-light border border-brand-accent/10 rounded-bl-none'
-                                    }`}
-                                >
+                                <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-base shadow-sm break-words ${isMe ? 'bg-brand-brown-cta text-brand-text-on-accent rounded-br-none' : 'bg-brand-secondary text-brand-light border border-brand-accent/10 rounded-bl-none'}`}>
                                     {msg.text}
                                 </div>
                                 <span className="text-[10px] text-brand-muted mt-1 px-1">

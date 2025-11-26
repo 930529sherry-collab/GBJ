@@ -130,14 +130,15 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
         if (!currentUser) return;
         setIsModalOpen(false);
         try {
-            // FIX: Pass currentUser as the first argument to match the function signature.
+            // @-fix: Pass currentUser as the first argument to match the function signature.
             await userApi.createPost(currentUser, content, store, imageUrl, visibility);
             
             await addCheckInRecord(String(currentUser.id), store.id, store.name);
             
             if (!currentUser.isGuest) {
                 addNotificationToUser(String(currentUser.id), "發布成功：您的動態已發布。", "動態通知");
-                await updateAllMissionProgress(currentUser.id);
+                // New Trigger for Mission Progress
+                userApi.triggerMissionUpdate('post_created', { hasPhoto: !!imageUrl });
             }
             handleManualRefresh();
         } catch (e: any) {
@@ -152,7 +153,7 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
             if (!item || !currentUser) return;
             const isCurrentlyLiked = item.isLiked;
             setFeedItems(prev => prev.map(i => i.id === itemId ? { ...i, isLiked: !i.isLiked, likes: i.isLiked ? i.likes - 1 : i.likes + 1 } : i));
-            // FIX: Resolved an unhandled promise rejection by properly awaiting the API call.
+            // @-fix: Resolved an unhandled promise rejection by properly awaiting the API call.
             await feedApi.toggleLike(item, String(currentUser.id), isCurrentlyLiked);
         });
     };
@@ -180,7 +181,8 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
             await feedApi.addComment(item, newComment);
             
             if (!currentUser.isGuest) {
-                 await updateAllMissionProgress(currentUser.id);
+                 // New Trigger for Mission Progress
+                 userApi.triggerMissionUpdate('comment_added');
             }
         });
     };

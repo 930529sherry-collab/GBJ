@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
@@ -19,6 +17,7 @@ const ChatListPage: React.FC = () => {
                 const currentUser: UserProfile = JSON.parse(profileData);
                 try {
                     // Mark chats as read when entering the list
+// @-fix: Property 'hasUnreadChats' does not exist on type 'UserProfile'. Added hasUnreadChats to UserProfile in types.ts
                     if (currentUser.hasUnreadChats) {
                         await chatApi.markChatsAsRead(currentUser.id);
                     }

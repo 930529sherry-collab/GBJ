@@ -6,6 +6,7 @@ import { FeedItem, Comment, UserProfile, Store } from '../types';
 import { MapPinIcon } from './icons/NavIcons';
 import { HeartIcon, ChatBubbleIcon, PaperAirplaneIcon, GlobeIcon, LockClosedIcon, XIcon, EllipsisVerticalIcon } from './icons/ActionIcons';
 import { formatDateTime } from '../constants';
+import { getStores } from '../utils/api';
 
 // Image Modal Component using a Portal
 const ImageModal: React.FC<{ src: string; isOpen: boolean; onClose: () => void }> = ({ src, isOpen, onClose }) => {
@@ -73,8 +74,15 @@ const FeedCard: React.FC<FeedCardProps> = ({ item, isLink = true, onToggleLike, 
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const savedStores = localStorage.getItem('stores');
-        setStores(savedStores ? JSON.parse(savedStores) : []);
+        const fetchStores = async () => {
+            try {
+                const fetched = await getStores();
+                setStores(fetched);
+            } catch (e) {
+                console.error("Failed to fetch stores for FeedCard", e);
+            }
+        };
+        fetchStores();
     }, []);
 
     useEffect(() => {

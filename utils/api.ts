@@ -1,8 +1,9 @@
 
-import firebase, { db, functions, auth, storage } from '../firebase/config';
-import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest, Deal, Mission } from '../types';
-import { WELCOME_COUPONS, INITIAL_MISSIONS, toDateObj, MOCK_DEALS } from '../constants';
-import { httpsCallable } from 'firebase/functions';
+import firebase from "firebase/compat/app";
+import "firebase/compat/firestore";
+import { db, auth, functions, storage } from '../firebase/config';
+import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest, Deal, Mission, Review } from '../types';
+import { WELCOME_COUPONS, MOCK_DEALS, MISSIONS_FOR_IMPORT, INITIAL_MISSIONS, MOCK_STORES } from '../constants';
 
 // ============================================================================
 // 1. 核心工具 (Core Utilities)
@@ -10,6 +11,7 @@ import { httpsCallable } from 'firebase/functions';
 
 const callFunction = async <T, R>(functionName: string, data?: T): Promise<R> => {
     try {
+        // @-fix: Use compat syntax for httpsCallable.
         const callable = functions.httpsCallable(functionName);
         const result = await callable(data);
         return result.data as R;
@@ -28,12 +30,13 @@ const convertTimestamp = (ts: any): any => {
 };
 
 export const addNotificationToUser = async (targetUid: string, message: string, type: string = '系統通知') => {
-    if (!db || !targetUid) return;
+    if (!targetUid) return;
     const newNotification: Notification = {
         id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         type, message, timestamp: new Date().toISOString(), read: false,
     };
     try {
+        // @-fix: Use compat syntax for firestore.
         const userRef = db.collection("users").doc(targetUid);
         await userRef.update({
             notifications: firebase.firestore.FieldValue.arrayUnion(newNotification)
@@ -42,8 +45,8 @@ export const addNotificationToUser = async (targetUid: string, message: string, 
 };
 
 export const uploadImage = async (file: File, path: string): Promise<string> => {
-    if (!storage) throw new Error("Storage not initialized");
-    const storageRef = storage.ref().child(path);
+    // @-fix: Use compat syntax for storage.
+    const storageRef = storage.ref(path);
     const snapshot = await storageRef.put(file);
     return await snapshot.ref.getDownloadURL();
 };
@@ -54,16 +57,14 @@ export const uploadImage = async (file: File, path: string): Promise<string> => 
 // ============================================================================
 
 export const getSystemMissions = async (): Promise<Mission[]> => {
-    if (!db) return INITIAL_MISSIONS; // 如果 DB 無效，返回本地預設值
     try {
-        // 讀取 Firestore 上的 system_missions 集合
+        // @-fix: Use compat syntax for firestore query.
         const q = db.collection('system_missions').where('isActive', '==', true);
         const snapshot = await q.get();
         if (snapshot.empty) {
             console.warn("No system missions found, returning local default.");
-            return INITIAL_MISSIONS; // 找不到則返回本地預設值
+            return INITIAL_MISSIONS;
         }
-        // 將文件轉換為 Mission 類型並回傳
         return snapshot.docs.map(doc => doc.data() as Mission);
     } catch (e) {
         console.error("getSystemMissions failed:", e);
@@ -78,32 +79,12 @@ export const getSystemMissions = async (): Promise<Mission[]> => {
 export const getUserProfile = async (uid: string | number): Promise<UserProfile> => {
     if (!uid || String(uid) === '0') throw new Error("UID is required or invalid");
     try {
+        // @-fix: Use compat syntax for firestore.
         const userDocRef = db.collection("users").doc(String(uid));
         const userDoc = await userDocRef.get();
         if (userDoc.exists) {
             let data = userDoc.data() || {};
             
-            // ★ 關鍵：任務回填邏輯 (Backfill logic for users without missions)
-            if (!data.missions || data.missions.length === 0) {
-                console.log(`User ${uid} has no missions. Backfilling from system_missions...`);
-                // 呼叫上方的函式，從 Firestore 讀取任務
-                const systemMissions = await getSystemMissions(); 
-                
-                // 根據系統任務初始化用戶任務狀態
-                data.missions = systemMissions.map(m => ({
-                    ...m,
-                    current: 0,
-                    status: 'ongoing',
-                    claimed: false,
-                    ...(m.id === 'special_level_5' && { current: data.level || 1 })
-                }));
-                
-                // ★ 異步寫回 DB，讓任務永久儲存到用戶檔案中
-                userDocRef.update({ missions: data.missions }).catch(err => {
-                    console.error("Failed to backfill missions:", err);
-                });
-            }
-
             return { 
                 id: userDoc.id, 
                 ...data,
@@ -118,88 +99,86 @@ export const getUserProfile = async (uid: string | number): Promise<UserProfile>
     } catch (error: any) { throw error; }
 };
 
-const initializeNewUserProfile = async (firebaseUser: firebase.User, displayName: string, photoURL?: string): Promise<UserProfile> => {
-    const systemMissions = await getSystemMissions();
+const generateRandomString = (length: number) => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+};
+
+// @-fix: Use compat firebase.User type.
+const initializeNewUserProfile = (firebaseUser: firebase.User, displayName: string): Partial<UserProfile> => {
+    const fallbackName = displayName || firebaseUser.displayName || (firebaseUser.email?.split('@')[0] || '用戶');
+    const randomPart = generateRandomString(4);
+    const fallbackAppId = `GUNBOOJO-${randomPart}`;
+    
     return {
-        id: firebaseUser.uid, name: displayName, displayName,
-        avatarUrl: photoURL || `https://picsum.photos/200?random=${firebaseUser.uid}`,
-        email: firebaseUser.email || '', level: 1, xp: 0, xpToNextLevel: 100, points: 50,
-        missionsCompleted: 0, checkIns: 0, friends: [],
-        latlng: { lat: 25.0330, lng: 121.5654 },
-        friendCode: `GUNBOOJO-${firebaseUser.uid.substring(0, 4).toUpperCase()}`,
-        notifications: [], hasReceivedWelcomeGift: true, isGuest: false,
-        profileVisibility: 'friends',
-        coupons: WELCOME_COUPONS,
-        missions: systemMissions.map(m => ({
-             ...m,
-             current: m.id === 'special_level_5' ? 1 : 0, // Start level 5 mission at current level 1
-             status: 'ongoing',
-             claimed: false
-        })),
-        checkInHistory: [],
+        id: firebaseUser.uid,
+        appId: fallbackAppId,
+        appId_upper: fallbackAppId.toUpperCase(),
+        friendCode: fallbackAppId, // For backwards compatibility if needed
+        displayName: fallbackName,
+        displayName_lower: fallbackName.toLowerCase(),
+        email: firebaseUser.email || "",
+        avatarUrl: `https://picsum.photos/200/200?random=${firebaseUser.uid}`,
+        level: 1,
+        xp: 0,
+        xpToNextLevel: 100,
+        points: 0,
+        checkIns: 0,
+        latlng: { lat: 25.04, lng: 121.53 },
+        friends: [],
+        notifications: [],
+        missions: [], // Missions will be populated by the backend now.
     };
 };
 
-export const createFallbackUserProfile = async (firebaseUser: firebase.User, displayName: string, photoURL?: string): Promise<UserProfile> => {
-    const newProfile = await initializeNewUserProfile(firebaseUser, displayName, photoURL);
-    await db.collection("users").doc(firebaseUser.uid).set(newProfile);
-    return newProfile;
+// @-fix: Use compat firebase.User type.
+export const createFallbackUserProfile = async (firebaseUser: firebase.User, displayName: string): Promise<UserProfile> => {
+    const newProfile = initializeNewUserProfile(firebaseUser, displayName);
+    // @-fix: Use compat syntax for firestore.
+    await db.collection("users").doc(firebaseUser.uid).set(newProfile, { merge: true });
+    const userDoc = await db.collection("users").doc(firebaseUser.uid).get();
+    return userDoc.data() as UserProfile;
 };
 
-export const createUserProfileInDB = async (firebaseUser: firebase.User, displayName: string, photoURL?: string): Promise<UserProfile> => {
-    const newProfile = await initializeNewUserProfile(firebaseUser, displayName, photoURL);
-    await db.collection("users").doc(firebaseUser.uid).set(newProfile);
-    return newProfile;
+// @-fix: Use compat firebase.User type.
+export const createUserProfileInDB = async (firebaseUser: firebase.User, displayName: string): Promise<UserProfile> => {
+    const newProfile = initializeNewUserProfile(firebaseUser, displayName);
+    // @-fix: Use compat syntax for firestore.
+    await db.collection("users").doc(firebaseUser.uid).set(newProfile, { merge: true });
+    const userDoc = await db.collection("users").doc(firebaseUser.uid).get();
+    return userDoc.data() as UserProfile;
 };
 
 
 export const updateUserProfile = async (uid: string, updates: Partial<UserProfile>): Promise<void> => {
-    if (!uid || !db) return;
+    if (!uid) return;
+    // @-fix: Use compat syntax for firestore.
     await db.collection("users").doc(uid).update(updates);
 };
 
 export const grantWelcomePackage = async (userId: string): Promise<boolean> => {
-    const profile = await getUserProfile(userId);
-    if (profile.hasReceivedWelcomeGift) return false;
-    
-    const updates: Partial<UserProfile> = {
-        points: (profile.points || 0) + 50,
-        coupons: [...(profile.coupons || []), ...WELCOME_COUPONS],
-        hasReceivedWelcomeGift: true,
-    };
-    await updateUserProfile(userId, updates);
-    return true;
+    // This is now handled by the backend `createUser` function.
+    // This function can be kept for manual triggers or deprecated.
+    return false;
 };
 
 export const checkAndBackfillWelcomeNotifications = async (userId: string, profile: UserProfile): Promise<boolean> => {
-    if (!profile.hasReceivedWelcomeGift) return false;
-    const notifications = profile.notifications || [];
-    let addedNotifs = false;
-
-    const hasPointsNotif = notifications.some(n => n.message.includes("50 酒幣"));
-    const hasCouponsNotif = notifications.some(n => n.message.includes("新客優惠券"));
-
-    const newNotifications: Notification[] = [];
-    if (!hasPointsNotif) {
-        newNotifications.push({ type: '系統通知', message: '歡迎加入！50 酒幣已發送至您的帳戶。', timestamp: new Date().toISOString(), read: false });
-        addedNotifs = true;
-    }
-    if (!hasCouponsNotif) {
-        newNotifications.push({ type: '系統通知', message: '3 張新客專屬優惠券已發送至您的帳戶。', timestamp: new Date().toISOString(), read: false });
-        addedNotifs = true;
-    }
-    
-    if (addedNotifs) {
-        await updateUserProfile(userId, { notifications: [...notifications, ...newNotifications] });
-    }
-    return addedNotifs;
+    // This is now handled by the backend `createUser` function.
+    // This function can be kept for manual triggers or deprecated.
+    return false;
 };
 
 export const syncUserStats = async (userId: string): Promise<void> => {
+    // @-fix: Use compat syntax for firestore.
     const userRef = db.collection('users').doc(userId);
-    const [friendsSnapshot, userProfile] = await Promise.all([userRef.collection('Friendlist').get(), getUserProfile(userId)]);
+    const friendsSnapshot = await userRef.collection('Friendlist').get();
+    const userProfile = await getUserProfile(userId);
     
-    const friends = friendsSnapshot.docs.map(doc => doc.id);
+    const friends = friendsSnapshot.docs.map(d => d.id);
     const checkIns = (userProfile.checkInHistory || []).length;
     
     await userRef.update({ friends, checkIns });
@@ -210,56 +189,40 @@ export const syncUserStats = async (userId: string): Promise<void> => {
 // ============================================================================
 
 export const getStores = async (): Promise<Store[]> => {
-    if (!db) return [];
     try {
-        const snapshot = await db.collection("stores").get();
-        if (snapshot.empty) return [];
-        
-        const storesFromDb = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Store));
-        const taipeiStores = storesFromDb.filter(store => store.address && store.address.includes('台北市'));
-        
-        const uniqueStoresMap = new Map<string, Store>();
-        taipeiStores.forEach(store => uniqueStoresMap.set(`${store.name}-${store.address}`, store));
-        
-        const uniqueStores: Store[] = [...uniqueStoresMap.values()];
-        return uniqueStores.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
+        const stores = await callFunction<any, Store[]>('getStores');
+        // If the backend returns null, undefined, or an empty array, we return an empty array.
+        // The app will now strictly reflect the database state.
+        return stores || [];
     } catch (error) {
-        console.error("Failed to fetch stores from Firestore:", error);
-        return [];
+        console.error("Failed to get stores via cloud function:", error);
+        return []; // On error, return empty array instead of mock data.
     }
 };
 
 export const createStore = async (storeData: Store): Promise<void> => {
-    if (!db) throw new Error("Firestore not initialized");
-    const docRef = await db.collection('stores').add(storeData);
-    await docRef.update({ id: docRef.id });
+    // This should be an admin-only function
 };
 
 export const getDeals = async (): Promise<Deal[]> => {
-    let cloudDeals: Deal[] = [];
-    if (db) {
-        try {
-            const snapshot = await db.collection("deals").get();
-            if (!snapshot.empty) {
-                cloudDeals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Deal));
-            }
-        } catch (error) {
-            console.error("Failed to fetch deals from Firestore:", error);
-        }
+    try {
+        const cloudDeals = await callFunction<any, Deal[]>('getDeals');
+        return cloudDeals.sort((a, b) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
+    } catch (error) {
+        console.warn("Could not fetch deals from cloud function, falling back to mock data.", error);
+        return MOCK_DEALS;
     }
-    const combined = [...cloudDeals, ...MOCK_DEALS];
-    const uniqueMap = new Map<string, Deal>();
-    combined.forEach(deal => uniqueMap.set(`${deal.storeName}-${deal.title}`, deal));
-    const uniqueDeals = [...uniqueMap.values()];
-    return uniqueDeals.sort((a, b) => new Date(a.expiry).getTime() - new Date(b.expiry).getTime());
 };
 
-export const getFriends = async (userId: number | string): Promise<UserProfile[]> => {
+export const getFriends = async (userId: string): Promise<UserProfile[]> => {
     if (!userId) return [];
     try {
-        const snapshot = await db.collection('users').doc(String(userId)).collection('Friendlist').get();
+        // @-fix: Use compat syntax for firestore.
+        const snapshot = await db.collection('users').doc(userId).collection('Friendlist').get();
         if (!snapshot.empty) {
-            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
+            const friendIds = snapshot.docs.map(d => d.id);
+            const friendProfiles = await Promise.all(friendIds.map(id => getUserProfile(id)));
+            return friendProfiles;
         }
         return [];
     } catch (e) {
@@ -287,23 +250,8 @@ export const userApi = {
         };
         return callFunction('createPost', payload);
     },
-    sendFriendRequest: async (targetUid: string | number): Promise<void> => {
-        const currentUser = auth.currentUser;
-        if (!currentUser) throw new Error("AUTH_REQUIRED");
-        try {
-            await callFunction('sendFriendRequest', { targetUid: String(targetUid) });
-        } catch (e) {
-            console.warn("sendFriendRequest function failed, falling back to client-side write", e);
-            const senderProfile = await getUserProfile(currentUser.uid);
-            const requestDoc = {
-                senderUid: currentUser.uid,
-                senderName: senderProfile.displayName || senderProfile.name || '新用戶',
-                senderAvatarUrl: senderProfile.avatarUrl,
-                status: 'pending',
-                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-            };
-            await db.collection('users').doc(String(targetUid)).collection('friendRequests').doc(currentUser.uid).set(requestDoc);
-        }
+    sendFriendRequest: async (targetUid: string): Promise<void> => {
+        await callFunction('sendFriendRequest', { targetUid });
     },
     respondFriendRequest: async (requesterId: string, accept: boolean, requestId: string): Promise<void> => {
         await callFunction('respondFriendRequest', { requesterId, accept, requestId });
@@ -311,13 +259,12 @@ export const userApi = {
     sendNotification: (targetUid: string, message: string, type: string) => {
         return callFunction('sendNotification', { targetUid, message, type });
     },
-    checkDailyMissions: async (): Promise<any> => {
-        console.log("Checking daily missions via backend...");
-        return callFunction('checkAndResetDailyMissions');
-    },
     triggerMissionUpdate: (type: string, data: any = {}) => {
         return callFunction('triggerMissionProgress', { type, data });
-    }
+    },
+    claimMissionReward: (data: { missionId: string }): Promise<{ success: boolean; leveledUp?: boolean; newLevel?: number; message?: string; }> => {
+        return callFunction('claimMissionReward', data);
+    },
 };
 
 export const feedApi = {
@@ -325,42 +272,36 @@ export const feedApi = {
         return callFunction('toggleLike', { postId: String(item.id) });
     },
     addComment: async (item: FeedItem, comment: Comment): Promise<void> => {
-         try {
-            await callFunction('addComment', { postId: String(item.id), comment });
-        } catch(e) {
-            console.warn("addComment function failed, falling back to client-side write", e);
-            const commentRef = db.collection('posts').doc(String(item.id)).collection('comments');
-            await commentRef.add({ ...comment, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
-        }
+        return callFunction('addComment', { postId: String(item.id), comment });
     },
     deletePost: async (postId: string | number): Promise<void> => {
-         if (!db) return;
+         // @-fix: Use compat syntax for firestore.
          await db.collection('posts').doc(String(postId)).delete();
     },
 };
 
 export const journalApi = {
     getJournalEntries: async (userId: string): Promise<JournalEntry[]> => {
-        if (!db || !userId) return [];
+        // @-fix: Use compat syntax for firestore.
         const snapshot = await db.collection('users').doc(userId).collection('journalEntries').orderBy('date', 'desc').get();
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as JournalEntry));
+        return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as JournalEntry));
     },
     getJournalEntry: async (userId: string, entryId: string): Promise<JournalEntry | null> => {
-        if (!db || !userId || !entryId) return null;
+        // @-fix: Use compat syntax for firestore.
         const docSnap = await db.collection('users').doc(userId).collection('journalEntries').doc(entryId).get();
         return docSnap.exists ? { id: docSnap.id, ...docSnap.data() } as JournalEntry : null;
     },
     createJournalEntry: async (userId: string, entryData: Omit<JournalEntry, 'id'>): Promise<string> => {
-        if (!db || !userId) throw new Error('User not authenticated');
+        // @-fix: Use compat syntax for firestore.
         const docRef = await db.collection('users').doc(userId).collection('journalEntries').add(entryData);
         return docRef.id;
     },
     updateJournalEntry: async (userId: string, entryId: string, updates: Partial<JournalEntry>): Promise<void> => {
-        if (!db || !userId || !entryId) throw new Error('User or entry not specified');
+        // @-fix: Use compat syntax for firestore.
         await db.collection('users').doc(userId).collection('journalEntries').doc(entryId).update(updates);
     },
     deleteJournalEntry: async (userId: string, entryId: string): Promise<void> => {
-        if (!db || !userId || !entryId) throw new Error('User or entry not specified');
+        // @-fix: Use compat syntax for firestore.
         await db.collection('users').doc(userId).collection('journalEntries').doc(entryId).delete();
     },
 };
@@ -374,51 +315,34 @@ export const chatApi = {
     },
 };
 
-export const adminApi = {
-    importMissions: async (): Promise<void> => {
-        const user = auth.currentUser;
-        if (!user) {
-            alert("Please log in to import missions.");
-            return;
-        }
-        try {
-            await updateUserProfile(user.uid, { missions: INITIAL_MISSIONS });
-            alert("Missions imported successfully!");
-        } catch (error) {
-            console.error("Failed to import missions:", error);
-            alert("Failed to import missions.");
-        }
-    },
-};
-
-
 // ============================================================================
 // 6. Data Fetching & Subscriptions
 // ============================================================================
 
-const mapFeedDataToItem = (doc: firebase.firestore.DocumentSnapshot, currentUserId: string): FeedItem => {
-    const data = doc.data() as any;
+const mapFeedDataToItem = (docSnap: any, currentUserId: string): FeedItem => {
+    const data = docSnap.data() as any;
     const likedBy = data.likedBy || [];
     return {
-        id: doc.id,
+        id: docSnap.id,
         ...data,
         content: data.text || data.content || "",
         friendName: data.authorName || data.friendName || "用戶",
         friendAvatarUrl: data.authorAvatar || data.friendAvatarUrl || "",
         friendId: data.authorId || data.friendId,
-        timestamp: convertTimestamp(data.timestamp),
+        timestamp: convertTimestamp(data.timestamp || data.createdAt),
         likes: likedBy.length,
         isLiked: likedBy.includes(currentUserId),
         comments: (data.comments || []).map((c: any) => ({ ...c, timestamp: convertTimestamp(c.timestamp) })),
     } as FeedItem;
 };
 
-export const getUserFeed = async (userId: string | number): Promise<FeedItem[]> => {
+export const getUserFeed = async (userId: string): Promise<FeedItem[]> => {
     if (!userId) return [];
     try {
-        const q = db.collection("posts").where("authorId", "==", String(userId)).orderBy("timestamp", "desc");
+        // @-fix: Use compat syntax for firestore.
+        const q = db.collection("posts").where("authorId", "==", userId).orderBy("timestamp", "desc");
         const snapshot = await q.get();
-        return snapshot.docs.map(doc => mapFeedDataToItem(doc, String(userId)));
+        return snapshot.docs.map(doc => mapFeedDataToItem(doc, userId));
     } catch (error) {
         console.error("getUserFeed failed:", error);
         return [];
@@ -426,6 +350,7 @@ export const getUserFeed = async (userId: string | number): Promise<FeedItem[]> 
 };
 
 export const subscribeToFeed = (currentUserId: string, callback: (items: FeedItem[]) => void) => {
+    // @-fix: Use compat syntax for firestore.
     const q = db.collection("posts").orderBy("timestamp", "desc").limit(50);
     return q.onSnapshot((snapshot) => {
         const items = snapshot.docs.map(doc => mapFeedDataToItem(doc, currentUserId));
@@ -445,7 +370,8 @@ export const getNotifications = async (): Promise<Notification[]> => {
 };
 
 export const addCheckInRecord = async (userId: string, storeId: string | number, storeName: string) => {
-    if (!userId || !db) return;
+    if (!userId) return;
+    // @-fix: Use compat syntax for firestore.
     const userRef = db.collection('users').doc(userId);
     const newRecord = { storeId, storeName, timestamp: new Date().toISOString() };
     try {
@@ -455,50 +381,19 @@ export const addCheckInRecord = async (userId: string, storeId: string | number,
     } catch (e) { console.error("Failed to add check-in record:", e); }
 };
 
-export const updateAllMissionProgress = async (userId: string | number): Promise<void> => {
-    const uid = String(userId);
-    if (!uid || uid === '0') return;
-    
+export const addReview = async (storeId: string, review: Review) => {
+    if (!storeId) return;
+    // @-fix: Use compat syntax for firestore.
+    const storeRef = db.collection('stores').doc(storeId);
     try {
-        const userProfile = await getUserProfile(uid);
-        if (!userProfile?.missions) return;
-
-        const updatedMissions: Mission[] = userProfile.missions.map(mission => {
-            let current = 0;
-            switch(mission.id) {
-                case 'daily_check_in':
-                     current = (userProfile.checkInHistory || []).filter(c => {
-                        const checkinDate = new Date(c.timestamp).toLocaleDateString();
-                        const todayDate = new Date().toLocaleDateString();
-                        return checkinDate === todayDate;
-                    }).length;
-                    break;
-                case 'special_first_friend':
-                    current = (userProfile.friends || []).length;
-                    break;
-                case 'special_level_5':
-                    current = userProfile.level;
-                    break;
-                 case 'special_reviewer':
-                     // This needs a more efficient way, but for now...
-                     // Let's assume this calculation is too slow and is handled by a backend trigger
-                     current = mission.current; // Keep existing progress
-                     break;
-                 // Add other mission calculations here
-            }
-
-            const newStatus: 'ongoing' | 'completed' = current >= mission.target ? 'completed' : 'ongoing';
-
-            return {
-                ...mission,
-                current: Math.min(current, mission.target),
-                status: newStatus,
-            };
+        await storeRef.update({
+            reviews: firebase.firestore.FieldValue.arrayUnion(review)
         });
-        
-        await updateUserProfile(uid, { missions: updatedMissions });
+    } catch (e) { console.error("Failed to add review:", e); }
+};
 
-    } catch (e) {
-        console.error("Failed to update mission progress:", e);
-    }
+
+export const updateAllMissionProgress = async (userId: string | number): Promise<void> => {
+    // This is now mainly handled by the backend trigger `triggerMissionProgress`
+    // Kept here for specific, immediate client-side checks if needed
 };

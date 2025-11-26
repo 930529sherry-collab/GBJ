@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { JournalEntry, UserProfile } from '../types';
@@ -22,7 +21,7 @@ const ViewJournalEntryPage: React.FC = () => {
             if (profileData) {
                 const profile: UserProfile = JSON.parse(profileData);
                 try {
-                    // FIX: Corrected call to journalApi.
+// @-fix: Corrected call to journalApi.
                     const entryData = await journalApi.getJournalEntry(String(profile.id), entryId);
                     if (entryData) {
                         setEntry(entryData);

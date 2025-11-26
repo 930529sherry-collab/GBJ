@@ -176,7 +176,7 @@ export const INITIAL_MISSIONS: Mission[] = MISSIONS_FOR_IMPORT.map(mission => ({
 
 
 export const MOCK_USER_PROFILE: UserProfile = {
-  id: 101,
+  id: '101',
   name: '雪莉',
   displayName: '雪莉',
   avatarUrl: 'https://picsum.photos/200/200?random=101',
@@ -188,30 +188,30 @@ export const MOCK_USER_PROFILE: UserProfile = {
   checkIns: 15,
   email: 'sherry@example.com',
   phone: '0987-654-321',
-  friends: [102, 103],
+  friends: ['102', '103'],
   friendCode: 'GUNBOOJO-SHERRY',
   latlng: { lat: 25.0479, lng: 121.5318 },
   missions: INITIAL_MISSIONS,
 } as UserProfile;
 
 export const MOCK_USERS: MockUser[] = [
-  { id: 101, email: 'sherry@example.com', password: 'password123', profile: MOCK_USER_PROFILE },
+  { id: '101', email: 'sherry@example.com', password: 'password123', profile: MOCK_USER_PROFILE },
   {
-    id: 102,
+    id: '102',
     email: 'brian@example.com',
     password: 'password123',
     profile: {
-      id: 102, name: '布萊恩', displayName: '布萊恩', avatarUrl: 'https://picsum.photos/200/200?random=102', level: 3, xp: 50, xpToNextLevel: 150,
-      points: 120, missionsCompleted: 4, checkIns: 8, friends: [101], friendCode: 'GUNBOOJO-BRIAN', latlng: { lat: 25.051, lng: 121.545 }, missions: INITIAL_MISSIONS,
+      id: '102', name: '布萊恩', displayName: '布萊恩', avatarUrl: 'https://picsum.photos/200/200?random=102', level: 3, xp: 50, xpToNextLevel: 150,
+      points: 120, missionsCompleted: 4, checkIns: 8, friends: ['101'], friendCode: 'GUNBOOJO-BRIAN', latlng: { lat: 25.051, lng: 121.545 }, missions: INITIAL_MISSIONS,
     } as UserProfile
   },
   {
-    id: 103,
+    id: '103',
     email: 'cathy@example.com',
     password: 'password123',
     profile: {
-      id: 103, name: '凱西', displayName: '凱西', avatarUrl: 'https://picsum.photos/200/200?random=103', level: 7, xp: 400, xpToNextLevel: 500,
-      points: 500, missionsCompleted: 12, checkIns: 22, friends: [101], friendCode: 'GUNBOOJO-CATHY', latlng: { lat: 25.033, lng: 121.565 }, missions: INITIAL_MISSIONS,
+      id: '103', name: '凱西', displayName: '凱西', avatarUrl: 'https://picsum.photos/200/200?random=103', level: 7, xp: 400, xpToNextLevel: 500,
+      points: 500, missionsCompleted: 12, checkIns: 22, friends: ['101'], friendCode: 'GUNBOOJO-CATHY', latlng: { lat: 25.033, lng: 121.565 }, missions: INITIAL_MISSIONS,
     } as UserProfile
   },
 ];

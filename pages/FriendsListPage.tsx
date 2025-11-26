@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { UserProfile, FriendRequest } from '../types';
@@ -50,7 +51,7 @@ const FriendsListPage: React.FC = () => {
     const handleRespond = async (e: React.MouseEvent, request: FriendRequest, accept: boolean) => {
         e.stopPropagation();
         try {
-            // FIX: Corrected the call to userApi.respondFriendRequest to include request.id.
+// @-fix: Corrected the call to userApi.respondFriendRequest to include request.id.
             await userApi.respondFriendRequest(request.senderUid, accept, request.id);
         } catch (error) {
             console.error("Failed to respond:", error);

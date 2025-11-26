@@ -1,10 +1,10 @@
 
 
-
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Mission, Notification } from '../types';
 import { userApi, updateUserProfile, addNotificationToUser } from '../utils/api';
 import { auth, db } from '../firebase/config';
+import { onSnapshot, doc } from "firebase/firestore";
 import { CheckCircleIcon, StarIcon, CalendarIcon, ListBulletIcon } from '../components/icons/NavIcons';
 import { SparklesIcon, XIcon } from '../components/icons/ActionIcons';
 
@@ -51,10 +51,10 @@ const MissionsPage: React.FC = () => {
         const fetchUserAndCheckReset = async () => {
             if (auth.currentUser) {
                 try {
-                    await userApi.checkDailyMissions();
-                    const userRef = db.collection('users').doc(auth.currentUser.uid);
-                    unsubscribe = userRef.onSnapshot((doc) => {
-                        if (doc.exists) {
+                    // Mission sync is now handled by backend triggers.
+                    const userRef = doc(db, 'users', auth.currentUser.uid);
+                    unsubscribe = onSnapshot(userRef, (doc) => { 
+                        if (doc.exists()) {
                             setUser(doc.data() as UserProfile);
                         }
                         setLoading(false);
@@ -96,11 +96,8 @@ const MissionsPage: React.FC = () => {
 
         const updatedMissions = updatedUser.missions.map(m => {
             if (m.id === missionId) {
-                // Special missions are permanently claimed
-                if (m.type === 'special') return { ...m, claimed: true };
-                // Daily missions just give reward, will be reset by backend
-                // FIX: Cast 'completed' to its literal type to prevent type widening to 'string', ensuring it matches the 'Mission' interface.
-                return { ...m, status: 'completed' as 'completed' }; // keep as completed for the day
+                // All missions are now permanently claimed, no more daily resets.
+                return { ...m, claimed: true };
             }
             return m;
         });
@@ -108,7 +105,7 @@ const MissionsPage: React.FC = () => {
         updatedUser.missions = updatedMissions;
 
         try {
-            await updateUserProfile(user.id, updatedUser);
+            await updateUserProfile(String(user.id), updatedUser);
             
             // Send notifications
             addNotificationToUser(String(user.id), `任務完成：「${missionToClaim.title}」！`, '任務通知');
@@ -169,8 +166,7 @@ const MissionsPage: React.FC = () => {
     return (
         <>
             <div className="animate-fade-in pb-24">
-                {/* FIX: Updated h1 title to be more engaging and consistent. */}
-                <h1 className="text-2xl font-bold text-brand-light px-6 pt-6 mb-4">喝酒任務</h1>
+                <h1 className="text-2xl font-bold text-brand-light px-6 pt-6 mb-4">任務中心</h1>
 
                 <div className="flex bg-brand-secondary border-b border-brand-accent/10 sticky top-0 z-10">
                     <TabButton id="all" label="全部" icon={<ListBulletIcon className="w-5 h-5"/>} />

@@ -1,5 +1,4 @@
 
-
 import { Store, Deal, Mission, UserProfile, FeedItem, Order, RedeemItem, Coupon, MockUser } from './types';
 
 // Helper function to format date as YYYY-MM-DD
@@ -142,11 +141,10 @@ export const MOCK_DEALS: Deal[] = [
     { id: 8, storeName: 'Bar Mood', title: '經典雞尾酒週', description: '本週限定，所有經典雞尾酒系列 (Old Fashioned, Negroni...) 享第二杯半價。', expiry: formatDate(addDays(today, 7)) },
 ];
 
-// Master list of all missions for the admin import tool
 // FIX: Explicitly type MISSIONS_FOR_IMPORT to ensure 'type' property is '"daily" | "special"' and not 'string'.
 // This resolves a TypeScript error when creating INITIAL_MISSIONS and allows it to be exported for use in other files like ProfilePage.
 export const MISSIONS_FOR_IMPORT: Array<Omit<Mission, 'current' | 'status' | 'claimed'>> = [
-    // --- 每日任務 (Daily Missions) ---
+    // --- 每日任務 ---
     { id: 'daily_check_in', title: '每日打卡', description: '發布一則動態即算打卡', xpReward: 50, type: 'daily', target: 1 },
     { id: 'daily_chat', title: '每日聊天', description: '在聊天室發送一則訊息', xpReward: 30, type: 'daily', target: 1 },
     { id: 'daily_night_owl', title: '夜貓子', description: '不醉不歸！在深夜時段（00:00 - 04:00）完成一次酒吧打卡，享受城市的寧靜。', xpReward: 80, type: 'daily', target: 1 },
@@ -154,7 +152,7 @@ export const MISSIONS_FOR_IMPORT: Array<Omit<Mission, 'current' | 'status' | 'cl
     { id: 'daily_friday_fever', title: '週五狂熱夜', description: '在最期待的週五夜晚前往任何酒吧打卡，用一杯好酒迎接週末自由。', xpReward: 50, type: 'daily', target: 1 },
     { id: 'daily_early_bird', title: '早鳥優惠', description: '懂得把握時間的聰明酒客！在傍晚 5 點到 7 點的 Happy Hour 黃金時段完成打卡。', xpReward: 50, type: 'daily', target: 1 },
   
-    // --- 特殊任務 (Special Missions) ---
+    // --- 特殊任務 ---
     { id: 'special_first_check_in', title: '初來乍到', description: '完成你的第一次酒吧打卡，為你的酒吧探險傳奇寫下精彩序幕。', xpReward: 100, pointsReward: 50, type: 'special', target: 1 },
     { id: 'special_first_friend', title: '廣結善緣', description: '新增第一位好友', xpReward: 100, type: 'special', target: 1 },
     { id: 'special_photo_post', title: '微醺留影', description: '用照片記錄歡樂瞬間！發布一則附帶照片的動態，讓大家看看你的微醺模樣。', xpReward: 50, type: 'special', target: 1 },
@@ -177,7 +175,7 @@ export const INITIAL_MISSIONS: Mission[] = MISSIONS_FOR_IMPORT.map(mission => ({
 
 
 export const MOCK_USER_PROFILE: UserProfile = {
-  id: 101,
+  id: '101',
   name: '雪莉',
   displayName: '雪莉',
   avatarUrl: 'https://picsum.photos/200/200?random=101',
@@ -189,30 +187,30 @@ export const MOCK_USER_PROFILE: UserProfile = {
   checkIns: 15,
   email: 'sherry@example.com',
   phone: '0987-654-321',
-  friends: [102, 103],
+  friends: ['102', '103'],
   friendCode: 'GUNBOOJO-SHERRY',
   latlng: { lat: 25.0479, lng: 121.5318 },
   missions: INITIAL_MISSIONS,
 } as UserProfile;
 
 export const MOCK_USERS: MockUser[] = [
-  { id: 101, email: 'sherry@example.com', password: 'password123', profile: MOCK_USER_PROFILE },
+  { id: '101', email: 'sherry@example.com', password: 'password123', profile: MOCK_USER_PROFILE },
   {
-    id: 102,
+    id: '102',
     email: 'brian@example.com',
     password: 'password123',
     profile: {
-      id: 102, name: '布萊恩', displayName: '布萊恩', avatarUrl: 'https://picsum.photos/200/200?random=102', level: 3, xp: 50, xpToNextLevel: 150,
-      points: 120, missionsCompleted: 4, checkIns: 8, friends: [101], friendCode: 'GUNBOOJO-BRIAN', latlng: { lat: 25.051, lng: 121.545 }, missions: INITIAL_MISSIONS,
+      id: '102', name: '布萊恩', displayName: '布萊恩', avatarUrl: 'https://picsum.photos/200/200?random=102', level: 3, xp: 50, xpToNextLevel: 150,
+      points: 120, missionsCompleted: 4, checkIns: 8, friends: ['101'], friendCode: 'GUNBOOJO-BRIAN', latlng: { lat: 25.051, lng: 121.545 }, missions: INITIAL_MISSIONS,
     } as UserProfile
   },
   {
-    id: 103,
+    id: '103',
     email: 'cathy@example.com',
     password: 'password123',
     profile: {
-      id: 103, name: '凱西', displayName: '凱西', avatarUrl: 'https://picsum.photos/200/200?random=103', level: 7, xp: 400, xpToNextLevel: 500,
-      points: 500, missionsCompleted: 12, checkIns: 22, friends: [101], friendCode: 'GUNBOOJO-CATHY', latlng: { lat: 25.033, lng: 121.565 }, missions: INITIAL_MISSIONS,
+      id: '103', name: '凱西', displayName: '凱西', avatarUrl: 'https://picsum.photos/200/200?random=103', level: 7, xp: 400, xpToNextLevel: 500,
+      points: 500, missionsCompleted: 12, checkIns: 22, friends: ['101'], friendCode: 'GUNBOOJO-CATHY', latlng: { lat: 25.033, lng: 121.565 }, missions: INITIAL_MISSIONS,
     } as UserProfile
   },
 ];

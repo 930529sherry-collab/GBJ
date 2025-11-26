@@ -1,9 +1,10 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SearchableUser, UserProfile, FriendRequest } from '../types';
 import { BackIcon } from '../components/icons/ActionIcons';
-// FIX: Imported searchUsers from the API module to resolve an undefined reference.
+// @-fix: Imported searchUsers from the API module to resolve an undefined reference.
 import { searchUsers, userApi, getUserProfile, addNotificationToUser } from '../utils/api';
 import { auth, db } from '../firebase/config';
 
@@ -92,7 +93,8 @@ const AddFriendPage: React.FC = () => {
         if (!currentUser || pendingSentRequests.includes(friendId)) return;
 
         try {
-            await userApi.sendFriendRequest(friendId);
+// @-fix: Argument of type 'string | number' is not assignable to parameter of type 'string'.
+            await userApi.sendFriendRequest(String(friendId));
             setPendingSentRequests(prev => [...prev, friendId]); // Add to pending list
 
             const friend = results.find(r => r.id === friendId);
@@ -122,7 +124,7 @@ const AddFriendPage: React.FC = () => {
     const handleRespond = async (request: FriendRequest, accept: boolean) => {
         try {
             setPendingRequests(prev => prev.filter(r => r.id !== request.id));
-            // FIX: Corrected the call to userApi.respondFriendRequest to include request.id.
+// @-fix: Corrected the call to userApi.respondFriendRequest to include request.id.
             await userApi.respondFriendRequest(request.senderUid, accept, request.id);
             if (accept) {
                 setSuccessMessage("已接受好友邀請！");
