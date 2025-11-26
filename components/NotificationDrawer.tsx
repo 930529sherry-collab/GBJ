@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { XIcon, BellIcon, ChevronDownIcon } from './icons/ActionIcons';
 import { UserPlusIcon } from './icons/NavIcons';
 import { UserProfile, Notification, FriendRequest } from '../types';
-// @-fix: Imported getNotifications from the API module to resolve an undefined reference.
 import { getUserProfile, userApi, getNotifications, updateUserProfile, addNotificationToUser, updateAllMissionProgress, syncUserStats } from '../utils/api';
 import { auth, db } from '../firebase/config';
 import { formatDateTime, toDateObj } from '../constants';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 interface NotificationDrawerProps {
     isOpen: boolean;
@@ -28,6 +28,7 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
     const [loading, setLoading] = useState(false);
     const [respondingIds, setRespondingIds] = useState<(string | number)[]>([]);
     const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
+    const [hasInteracted, setHasInteracted] = useState(false);
 
     useEffect(() => {
         if (!auth.currentUser || !isOpen) return;
@@ -35,9 +36,9 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
         const uid = auth.currentUser.uid;
         fetchNotifications();
 
-        const requestsRef = db.collection('users').doc(uid).collection('friendRequests');
-        const q = requestsRef.where('status', '==', 'pending');
-        const unsubscribe = q.onSnapshot((snapshot) => {
+        const requestsRef = collection(db, 'users', uid, 'friendRequests');
+        const q = query(requestsRef, where('status', '==', 'pending'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
             const requests: FriendRequest[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
             setFriendRequests(requests);
         });
@@ -60,8 +61,20 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
         return groupedArray;
     }, [notifications]);
 
+    useEffect(() => {
+        if (groupedNotifications.length > 0 && !hasInteracted) {
+            const latestGroup = groupedNotifications[0].type;
+            if (!expandedGroups.includes(latestGroup)) {
+                setExpandedGroups([latestGroup]);
+            }
+        }
+    }, [groupedNotifications, hasInteracted]);
+    
     const toggleGroup = (type: string) => {
-        setExpandedGroups(prev => prev.includes(type) ? prev.filter(g => g !== type) : [...prev, type]);
+        setHasInteracted(true);
+        setExpandedGroups(prev => 
+            prev.includes(type) ? prev.filter(g => g !== type) : [...prev, type]
+        );
     };
 
     const fetchNotifications = async () => {
@@ -73,7 +86,6 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
         finally { setLoading(false); }
     };
 
-    // @-fix: Implemented handleNotificationClick to mark notifications as read.
     const handleNotificationClick = async (notif: Notification) => {
         if (notif.read) return;
 

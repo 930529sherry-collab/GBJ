@@ -1,7 +1,8 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation, Link, Navigate, useNavigate } from 'react-router-dom';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, onSnapshot, collection, query, where } from 'firebase/firestore';
+
 import BottomNav from './components/BottomNav';
 import MapPage from './pages/MapPage';
 import FriendsMapPage from './pages/FriendsMapPage';
@@ -30,7 +31,7 @@ import { Store, UserProfile, Coupon, Notification, FriendRequest } from './types
 import AddStorePage from './pages/AddStorePage';
 import { GeolocationProvider, useGeolocation } from './context/GeolocationContext';
 import { GuestGuardProvider, useGuestGuard } from './context/GuestGuardContext';
-import { MOCK_STORES, WELCOME_COUPONS } from './constants';
+import { WELCOME_COUPONS } from './constants';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import OnboardingPage from './pages/OnboardingPage';
@@ -39,8 +40,7 @@ import ChatListPage from './pages/ChatListPage';
 import ChatRoomPage from './pages/ChatRoomPage';
 import NotificationDrawer from './components/NotificationDrawer';
 import { auth, db } from './firebase/config';
-import { getUserProfile, grantWelcomePackage, getNotifications, syncUserStats, createFallbackUserProfile, checkAndBackfillWelcomeNotifications, userApi, updateUserProfile } from './utils/api';
-// @-fix: Imported ViewJournalEntryPage to resolve a "Cannot find name" error.
+import { getUserProfile, grantWelcomePackage, getNotifications, syncUserStats, createFallbackUserProfile, checkAndBackfillWelcomeNotifications, userApi, updateUserProfile, getStores } from './utils/api';
 import ViewJournalEntryPage from './pages/ViewJournalEntryPage';
 
 
@@ -52,16 +52,22 @@ const FavoritesModal: React.FC<{ isOpen: boolean; onClose: () => void; }> = ({ i
     useEffect(() => {
         if (!isOpen) return;
         setLoading(true);
-        setTimeout(() => {
-            const allStores: Store[] = JSON.parse(localStorage.getItem('stores') || JSON.stringify(MOCK_STORES));
-            // @-fix: Changed favoriteIds type to handle both number and string IDs, as store.id can be either.
-            const favoriteIds: (number | string)[] = JSON.parse(localStorage.getItem('favoriteStoreIds') || '[]');
-            setFavoriteStores(allStores.filter(store => favoriteIds.includes(store.id)));
-            setLoading(false);
-        }, 100);
+        
+        const fetchFavorites = async () => {
+             try {
+                const allStores = await getStores();
+                const favoriteIds: (number | string)[] = JSON.parse(localStorage.getItem('favoriteStoreIds') || '[]');
+                setFavoriteStores(allStores.filter(store => favoriteIds.includes(store.id) || favoriteIds.includes(String(store.id)) || favoriteIds.includes(Number(store.id))));
+             } catch (e) {
+                 console.error("Failed to fetch favorite stores:", e);
+                 setFavoriteStores([]);
+             } finally {
+                 setLoading(false);
+             }
+        };
+        fetchFavorites();
     }, [isOpen]);
 
-    // @-fix: Updated handleNavigate to accept both number and string to match the type of store.id.
     const handleNavigate = (storeId: number | string) => { onClose(); navigate(`/store/${storeId}`); };
     if (!isOpen) return null;
 
@@ -109,20 +115,19 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
         
         const uid = auth.currentUser.uid;
     
-        const unSubProfile = db.collection('users').doc(uid)
-            .onSnapshot((doc) => {
-                const data = doc.data() as UserProfile;
-                if (data) {
-                    const hasUnreadNotifs = (data.notifications || []).some(n => !n.read);
-                    setHasUnread(prev => hasUnreadNotifs || (prev && !hasUnreadNotifs)); 
-                    setHasUnreadChats(!!data.hasUnreadChats);
-                }
-            });
+        const unSubProfile = onSnapshot(doc(db, 'users', uid), (doc) => {
+            const data = doc.data() as UserProfile;
+            if (data) {
+                const hasUnreadNotifs = (data.notifications || []).some(n => !n.read);
+                setHasUnread(prev => hasUnreadNotifs || (prev && !hasUnreadNotifs)); 
+                setHasUnreadChats(!!data.hasUnreadChats);
+            }
+        });
         
-        const requestsRef = db.collection('users').doc(uid).collection('friendRequests');
-        const q = requestsRef.where('status', '==', 'pending');
+        const requestsRef = collection(db, 'users', uid, 'friendRequests');
+        const q = query(requestsRef, where('status', '==', 'pending'));
             
-        const unSubRequests = q.onSnapshot((snapshot) => {
+        const unSubRequests = onSnapshot(q, (snapshot) => {
             const hasPending = !snapshot.empty;
             setHasUnread(prev => hasPending || prev);
         });
@@ -155,8 +160,7 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
         '/friends': '好友地圖',
         '/feed': '好友動態',
         '/deals': '店家優惠',
-// @-fix: Updated page title to match the title in MissionsPage.tsx.
-        '/missions': '任務中心',
+        '/missions': '喝酒任務',
         '/profile': '個人檔案',
         '/orders': '我的訂單',
         '/profile/edit': '編輯個人檔案',
@@ -200,7 +204,7 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
       <div className="h-screen w-full bg-brand-primary flex flex-col font-sans relative overflow-hidden">
         <BackgroundMap />
         {currentUser?.isGuest && <div className="fixed top-0 left-0 right-0 bg-brand-accent text-brand-primary text-center text-xs font-bold py-1 z-20">訪客模式</div>}
-        <header className={`sticky top-0 z-10 h-16 bg-brand-primary/80 backdrop-blur-md flex items-center justify-center p-4 border-b border-brand-accent/20 flex-shrink-0`}>
+        <header className={'sticky top-0 z-10 h-16 bg-brand-primary/80 backdrop-blur-md flex items-center justify-center p-4 border-b border-brand-accent/20 flex-shrink-0'}>
             <div className="absolute top-1/2 -translate-y-1/2 left-4">
                 {showRefreshButton && (
                     <button onClick={handleRefresh} className="text-brand-light hover:text-brand-accent p-2 rounded-full transition-colors">
@@ -286,12 +290,11 @@ const App: React.FC = () => {
             });
         }, 8000);
 
-        const unsubscribe = auth.onAuthStateChanged(async (user) => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
             clearTimeout(authTimeout);
 
             if (user) {
                 try {
-                    // Critical user setup and data sync. Mission sync is handled by backend.
                     const profile = await getUserProfile(user.uid);
                     
                     if (!profile.hasReceivedWelcomeGift) {
@@ -352,7 +355,7 @@ const App: React.FC = () => {
     };
     
     const handleLogout = () => {
-        auth.signOut().catch(e => console.error("Sign out error", e));
+        signOut(auth).catch(e => console.error("Sign out error", e));
         localStorage.clear();
         setCurrentUser(null);
         setAuthStatus('unauthed');

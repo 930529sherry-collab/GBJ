@@ -24,16 +24,21 @@ const ReservationModal: React.FC<{
     const [date, setDate] = useState('');
     const [time, setTime] = useState('19:00');
     const [people, setPeople] = useState(2);
-    const today = new Date().toISOString().split('T')[0];
+    
+    const tomorrow = useMemo(() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().split('T')[0];
+    }, []);
     
     useEffect(() => { 
         if (isOpen) { 
-            setDate(today); 
+            setDate(tomorrow); 
             setTime('19:00'); 
             setPeople(2); 
             setStep('form'); 
         } 
-    }, [isOpen, today]);
+    }, [isOpen, tomorrow]);
 
     const handleConfirm = () => {
         if (!store) return;
@@ -81,7 +86,7 @@ const ReservationModal: React.FC<{
                         <div className="space-y-4">
                             <div>
                                 <label htmlFor="date" className="block text-sm font-medium text-brand-light mb-1">預約日期</label>
-                                <input type="date" id="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-2 text-brand-light focus:ring-brand-accent focus:border-brand-accent" />
+                                <input type="date" id="date" value={date} min={tomorrow} onChange={(e) => setDate(e.target.value)} className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-2 text-brand-light focus:ring-brand-accent focus:border-brand-accent" />
                             </div>
                             <div>
                                 <label htmlFor="time" className="block text-sm font-medium text-brand-light mb-1">預計到達時間</label>
@@ -324,7 +329,7 @@ const HomePage: React.FC = () => {
 
                             {/* Pagination Controls */}
                             {totalPages > 1 && (
-                                <div className="flex justify-center items-center gap-4 mt-6">
+                                <div className="flex justify-center items-center gap-4 mt-8 pt-4 border-t-2 border-brand-accent/10 bg-brand-secondary -mx-2 -mb-2 py-4 rounded-b-lg">
                                     <button
                                         onClick={handlePrevPage}
                                         disabled={currentPage === 1}

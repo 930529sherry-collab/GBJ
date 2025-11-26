@@ -6,6 +6,8 @@ import { UserProfile, FriendRequest } from '../types';
 import { BackIcon } from '../components/icons/ActionIcons';
 import { userApi } from '../utils/api';
 import { auth, db } from '../firebase/config';
+// @-fix: Import modular Firestore functions
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 
 const FriendsListPage: React.FC = () => {
     const navigate = useNavigate();
@@ -23,8 +25,10 @@ const FriendsListPage: React.FC = () => {
         const uid = auth.currentUser.uid;
         setLoading(true);
 
-        const friendsRef = db.collection('users').doc(uid).collection('Friendlist');
-        const unsubFriends = friendsRef.orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
+        // @-fix: Use modular Firestore syntax
+        const friendsRef = collection(db, 'users', uid, 'Friendlist');
+        const friendsQuery = query(friendsRef, orderBy('timestamp', 'desc'));
+        const unsubFriends = onSnapshot(friendsQuery, (snapshot) => {
             const friendsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as UserProfile[];
             setFriends(friendsData);
             setLoading(false);
@@ -33,9 +37,10 @@ const FriendsListPage: React.FC = () => {
             setLoading(false);
         });
         
-        const requestsRef = db.collection('users').doc(uid).collection('friendRequests');
-        const q = requestsRef.where('status', '==', 'pending');
-        const unsubRequests = q.onSnapshot((snapshot) => {
+        // @-fix: Use modular Firestore syntax
+        const requestsRef = collection(db, 'users', uid, 'friendRequests');
+        const q = query(requestsRef, where('status', '==', 'pending'));
+        const unsubRequests = onSnapshot(q, (snapshot) => {
             const requests: FriendRequest[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
             setPendingRequests(requests);
         }, (error) => {

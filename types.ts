@@ -1,5 +1,8 @@
 
 
+
+
+
 export interface Review {
   id: number | string;
   authorId?: string | number;
@@ -54,18 +57,24 @@ export interface Deal {
 }
 
 export interface Mission {
-    id: string; // e.g., 'daily_check_in'
-    title: string;
-    description: string;
-    xpReward: number;
-    pointsReward?: number;
-    type: 'daily' | 'special';
-    target: number;
-    current: number;
-    status: 'ongoing' | 'completed';
-    claimed?: boolean; // For special missions
+  id: number;
+  title: string;
+  description: string;
+  reward: {
+    xp: number;
+    points?: number;
+  };
+  progress: number;
+  goal: number;
+  type: 'daily' | 'special';
 }
 
+// FIX: Export CheckInHistoryItem to be used in other files.
+export interface CheckInHistoryItem {
+  storeId: string | number;
+  storeName: string;
+  timestamp: string;
+}
 
 export interface UserProfile {
   id: string; // Firebase UID
@@ -78,7 +87,7 @@ export interface UserProfile {
   checkIns: number;
   email?: string;
   phone?: string;
-  friends: string[];
+  friends: (string | number)[];
   latlng: { lat: number; lng: number };
   friendCode?: string; // Legacy
   appId?: string;
@@ -90,13 +99,13 @@ export interface UserProfile {
   isGuest?: boolean;
   profileVisibility?: 'public' | 'friends' | 'private';
   coupons?: Coupon[];
-  checkInHistory?: { storeId: string | number; storeName: string; timestamp: string; }[];
-  missions: Mission[]; // New mission structure
-  lastResetDate?: string; // YYYY-MM-DD
-// @-fix: Add hasUnreadChats to UserProfile type
+  // FIX: Use the exported CheckInHistoryItem type.
+  checkInHistory?: CheckInHistoryItem[];
+  missionProgress?: { [key: number]: number };
+  completedMissionIds?: number[];
+  hasReceivedWelcomeNotifications?: boolean;
+  dailyMissionLastReset?: string; // YYYY-MM-DD
   hasUnreadChats?: boolean;
-  // @-fix: Add missionsCompleted to UserProfile type
-  missionsCompleted?: number;
 }
 
 

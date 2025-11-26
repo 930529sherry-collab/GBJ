@@ -1,14 +1,12 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import ToggleSwitch from '../components/ToggleSwitch';
 import { auth } from '../firebase/config';
 import { useGuestGuard } from '../context/GuestGuardContext';
 import { XIcon } from '../components/icons/ActionIcons';
 import { updateUserProfile } from '../utils/api';
 import { UserProfile } from '../types';
-// @-fix: Replaced modular 'sendPasswordResetEmail' import with compat syntax.
 
 interface PrivacySettings {
   profileVisibility: 'public' | 'friends' | 'private';
@@ -67,8 +65,7 @@ const ChangePasswordModal: React.FC<{
         if (!email || !auth) return;
         setStatus('sending');
         try {
-            // @-fix: Switched to compat syntax for sending password reset email.
-            await auth.sendPasswordResetEmail(email);
+            await sendPasswordResetEmail(auth, email);
             setStatus('success');
         } catch (err: any) {
             console.error("Password reset error:", err);
@@ -177,7 +174,6 @@ const PrivacySettingsPage: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const { checkGuest } = useGuestGuard();
     
-    // Password Modal State
     const [isPasswordModalOpen, setPasswordModalOpen] = useState(false);
     const [userEmail, setUserEmail] = useState<string | null>(null);
 
@@ -213,7 +209,6 @@ const PrivacySettingsPage: React.FC = () => {
                     await updateUserProfile(String(profile.id), { profileVisibility: settings.profileVisibility });
                 } catch (e) {
                     console.error("Failed to save visibility setting to Firestore", e);
-                    // Optionally show an error to the user
                 }
             }
         }
@@ -246,7 +241,6 @@ const PrivacySettingsPage: React.FC = () => {
 
     return (
         <div className="space-y-6 animate-fade-in">
-            {/* Profile Visibility Section */}
             <div className="bg-brand-secondary p-6 rounded-2xl border-2 border-brand-accent/20">
                 <h3 className="text-lg font-bold text-brand-light mb-4">個人檔案可見度</h3>
                 <div className="space-y-3">
@@ -280,7 +274,6 @@ const PrivacySettingsPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Sharing Settings Section */}
             <div className="bg-brand-secondary p-6 rounded-2xl border-2 border-brand-accent/20 space-y-6">
                  <h3 className="text-lg font-bold text-brand-light">分享設定</h3>
                  <ToggleSwitch 
@@ -300,7 +293,6 @@ const PrivacySettingsPage: React.FC = () => {
                  />
             </div>
             
-            {/* Data Management Section */}
             <div className="bg-brand-secondary rounded-lg overflow-hidden border-2 border-brand-accent/20">
                 <button 
                     onClick={handleChangePasswordClick}
@@ -314,7 +306,6 @@ const PrivacySettingsPage: React.FC = () => {
                 </button>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex gap-4 mt-8">
                 <button
                     onClick={() => navigate('/profile')}
@@ -332,7 +323,6 @@ const PrivacySettingsPage: React.FC = () => {
                 </button>
             </div>
 
-            {/* Change Password Modal */}
             <ChangePasswordModal 
                 isOpen={isPasswordModalOpen}
                 onClose={() => setPasswordModalOpen(false)}

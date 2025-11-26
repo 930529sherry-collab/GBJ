@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Store, JournalEntry, UserProfile } from '../types';
 import { BackIcon, StarIcon, XIcon } from '../components/icons/ActionIcons';
 import { MOCK_STORES, formatDate } from '../constants';
-import { journalApi, updateAllMissionProgress } from '../utils/api';
+import { journalApi, updateAllMissionProgress, getStores } from '../utils/api';
 
 const EditJournalEntryPage: React.FC = () => {
     const navigate = useNavigate();
@@ -23,8 +23,13 @@ const EditJournalEntryPage: React.FC = () => {
 
     useEffect(() => {
         const loadData = async () => {
-            const savedStores = localStorage.getItem('stores');
-            setStores(savedStores ? JSON.parse(savedStores) : MOCK_STORES);
+            try {
+                const fetchedStores = await getStores();
+                setStores(fetchedStores);
+            } catch (error) {
+                console.error("Failed to load stores:", error);
+                setStores([]);
+            }
             
             const profileData = localStorage.getItem('userProfile');
             if (profileData) {
@@ -34,7 +39,6 @@ const EditJournalEntryPage: React.FC = () => {
                 if (isEditing && entryId) {
                     setLoading(true);
                     try {
-// @-fix: Corrected call to journalApi.
                         const entryToEdit = await journalApi.getJournalEntry(String(profile.id), entryId);
                         if (entryToEdit) {
                             setStoreId(entryToEdit.storeId);
@@ -77,10 +81,10 @@ const EditJournalEntryPage: React.FC = () => {
         }
 
         setIsSaving(true);
-        const selectedStore = stores.find(s => s.id === Number(storeId));
+        const selectedStore = stores.find(s => String(s.id) === String(storeId));
 
         const entryData = {
-            storeId: Number(storeId) || 0,
+            storeId: storeId || 0,
             storeName: selectedStore?.name || '',
             drinkName: drinkName.trim(),
             rating,
@@ -92,18 +96,15 @@ const EditJournalEntryPage: React.FC = () => {
 
         try {
             if (isEditing && entryId) {
-// @-fix: Corrected call to journalApi.
                 await journalApi.updateJournalEntry(String(currentUser.id), entryId, entryData);
             } else {
-// @-fix: Corrected call to journalApi.
                 await journalApi.createJournalEntry(String(currentUser.id), entryData as Omit<JournalEntry, 'id'>);
             }
             setIsSaving(false);
             alert(isEditing ? "筆記已更新！" : "筆記已新增！");
             
-            // Trigger mission update
             if (!currentUser.isGuest) {
-                updateAllMissionProgress(currentUser.id);
+                await updateAllMissionProgress(currentUser.id);
             }
             
             navigate('/journal');
@@ -276,7 +277,6 @@ const EditJournalEntryPage: React.FC = () => {
                                 if (window.confirm("確定要刪除這篇筆記嗎？此操作無法復原。")) {
                                     if(currentUser && entryId) {
                                         try {
-// @-fix: Corrected call to journalApi.
                                             await journalApi.deleteJournalEntry(String(currentUser.id), entryId);
                                             alert("筆記已刪除");
                                             navigate('/journal');

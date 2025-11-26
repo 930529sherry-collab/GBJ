@@ -1,12 +1,10 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { updateProfile } from "firebase/auth";
 import { MOCK_USER_PROFILE } from '../constants';
 import { UserProfile } from '../types';
 import { updateUserProfile, getUserProfile, uploadImage } from '../utils/api';
 import { auth } from '../firebase/config';
-// @-fix: Replaced modular 'updateProfile' import with compat syntax which is accessed via auth.currentUser.
 
 const EditProfilePage: React.FC = () => {
     const navigate = useNavigate();
@@ -20,7 +18,6 @@ const EditProfilePage: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        // Load the current profile data
         const savedProfile = localStorage.getItem('userProfile');
         const currentProfile = savedProfile ? JSON.parse(savedProfile) : MOCK_USER_PROFILE;
         setProfile(currentProfile);
@@ -34,7 +31,6 @@ const EditProfilePage: React.FC = () => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             
-            // Limit to 5MB
             if (file.size > 5 * 1024 * 1024) {
                 alert('圖片大小請勿超過 5MB');
                 return;
@@ -60,16 +56,13 @@ const EditProfilePage: React.FC = () => {
         
         try {
             const uid = String(profile.id);
-            let finalAvatarUrl = profile.avatarUrl; // Use existing URL by default
+            let finalAvatarUrl = profile.avatarUrl;
 
-            // 0. 如果有選新圖片，先上傳到 Storage
-            // @-fix: Corrected unintentional type comparison from '0' (number) to "'0'" (string).
             if (selectedFile && profile.id !== '0') {
                 console.log("正在上傳圖片到 Storage...");
                 finalAvatarUrl = await uploadImage(selectedFile, `avatars/${uid}_${Date.now()}.jpg`);
             }
 
-            // 1. 準備要更新的資料
             const updates: Partial<UserProfile> = {
                 displayName: name,
                 name: name,
@@ -78,38 +71,29 @@ const EditProfilePage: React.FC = () => {
                 phone: phone
             };
 
-            // 2. 更新 Firestore 資料庫
-            // @-fix: Corrected unintentional type comparison from '0' (number) to "'0'" (string).
             if (profile.id !== '0') {
                  console.log("正在更新資料庫...");
                  await updateUserProfile(uid, updates);
             }
             
-            // 3. 更新 Firebase Auth (現在網址變短了，可以安全更新)
             if (auth.currentUser) {
                 console.log("正在更新 Auth Profile...");
-                // @-fix: Switched to compat syntax for updating user profile.
-                await auth.currentUser.updateProfile({
+                await updateProfile(auth.currentUser, {
                     displayName: name,
                     photoURL: finalAvatarUrl 
                 });
             }
             
-            // 4. 更新 LocalStorage
             console.log("正在同步本地快取...");
             let latestProfile: UserProfile;
             
             try {
-                // @-fix: Corrected unintentional type comparison from '0' (number) to "'0'" (string).
                 if (profile.id !== '0') {
-                    // Fetch fresh profile to get any server-side changes
                     latestProfile = await getUserProfile(uid);
                 } else {
-                    // 訪客模式直接用本地更新
                     latestProfile = { ...profile, ...updates };
                 }
             } catch (e) {
-                // 如果抓取失敗，使用樂觀更新
                 console.warn("Fetch profile failed, falling back to optimistic update", e);
                 latestProfile = { ...profile, ...updates };
             }

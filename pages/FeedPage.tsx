@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FeedItem, Store, Comment, UserProfile } from '../types';
@@ -32,17 +31,84 @@ const CheckInModal: React.FC<{
                 setStores([]);
             });
         } else {
+            // Reset state when modal closes
             setContent(''); setSelectedStoreId(null); setImagePreview(null); setVisibility('public'); setIsStoreListExpanded(true);
         }
     }, [isOpen]);
 
-    const resizeImage = (file: File): Promise<string> => { return new Promise(res => res("")); };
-    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => { /* ... */ };
-    const removeImage = () => { /* ... */ };
+    const resizeImage = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target?.result as string;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800;
+                    const MAX_HEIGHT = 800;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        return reject(new Error('Failed to get canvas context'));
+                    }
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7)); // Compress to 70% quality JPEG
+                };
+                img.onerror = (error) => reject(error);
+            };
+            reader.onerror = (error) => reject(error);
+        });
+    };
+
+    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            // Looser check here because we are resizing
+            if (file.size > 10 * 1024 * 1024) { // 10MB
+                alert('圖片檔案過大，請選擇小於 10MB 的圖片。');
+                return;
+            }
+            setIsProcessingImage(true);
+            try {
+                const resizedImage = await resizeImage(file);
+                setImagePreview(resizedImage);
+            } catch (error) {
+                console.error("Image processing failed:", error);
+                alert("圖片處理失敗，請稍後再試。");
+            } finally {
+                setIsProcessingImage(false);
+            }
+        }
+    };
+
+    const removeImage = () => {
+        setImagePreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
 
     const handlePostClick = () => {
         const store = stores.find(s => s.id === selectedStoreId);
-        if (store) onPost(content, store, imagePreview || undefined, visibility);
+        if (store) {
+            onPost(content, store, imagePreview || undefined, visibility);
+        }
     };
 
     if (!isOpen) return null;
@@ -56,7 +122,7 @@ const CheckInModal: React.FC<{
                     <div>
                         <input type="file" ref={fileInputRef} onChange={handleImageChange} className="hidden" accept="image/*" />
                         <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full flex items-center justify-center gap-2 bg-brand-primary border-2 border-brand-accent/50 text-brand-light py-2 px-4 rounded-lg hover:bg-brand-accent/10 transition-colors" disabled={isProcessingImage}>
-                            {isProcessingImage ? '處理中...' : '上傳照片'}
+                            {isProcessingImage ? '處理中...' : (imagePreview ? '更換照片' : '上傳照片')}
                         </button>
                         {imagePreview && (
                             <div className="mt-4 relative">
@@ -94,7 +160,25 @@ const CheckInModal: React.FC<{
     );
 };
 
-const DeleteConfirmationModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: () => void; }> = ({ isOpen, onClose, onConfirm }) => { /* ... */ return null; };
+const DeleteConfirmationModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: () => void; }> = ({ isOpen, onClose, onConfirm }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-50 flex justify-center items-center p-4 backdrop-blur-md animate-fade-in">
+            <div className="bg-brand-secondary rounded-2xl p-6 w-full max-w-sm border-2 border-brand-accent/30 shadow-2xl shadow-brand-accent/10">
+                <h2 className="text-xl font-bold text-brand-accent mb-4 text-center">刪除貼文</h2>
+                <p className="text-brand-muted mb-6 text-center">確定要刪除這則貼文嗎？<br/>此操作無法復原。</p>
+                <div className="flex gap-4">
+                    <button onClick={onClose} className="flex-1 bg-brand-primary border-2 border-brand-accent text-brand-light font-semibold py-2 px-4 rounded-lg hover:bg-brand-accent/10">
+                        取消
+                    </button>
+                    <button onClick={onConfirm} className="flex-1 bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700">
+                        確認刪除
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => {
     const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
@@ -130,15 +214,13 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
         if (!currentUser) return;
         setIsModalOpen(false);
         try {
-            // @-fix: Pass currentUser as the first argument to match the function signature.
             await userApi.createPost(currentUser, content, store, imageUrl, visibility);
             
             await addCheckInRecord(String(currentUser.id), store.id, store.name);
             
             if (!currentUser.isGuest) {
-                addNotificationToUser(String(currentUser.id), "發布成功：您的動態已發布。", "動態通知");
-                // New Trigger for Mission Progress
-                userApi.triggerMissionUpdate('post_created', { hasPhoto: !!imageUrl });
+                await addNotificationToUser(String(currentUser.id), "發布成功：您的動態已發布。", "動態通知");
+                await updateAllMissionProgress(currentUser.id);
             }
             handleManualRefresh();
         } catch (e: any) {
@@ -153,7 +235,6 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
             if (!item || !currentUser) return;
             const isCurrentlyLiked = item.isLiked;
             setFeedItems(prev => prev.map(i => i.id === itemId ? { ...i, isLiked: !i.isLiked, likes: i.isLiked ? i.likes - 1 : i.likes + 1 } : i));
-            // @-fix: Resolved an unhandled promise rejection by properly awaiting the API call.
             await feedApi.toggleLike(item, String(currentUser.id), isCurrentlyLiked);
         });
     };
@@ -181,23 +262,65 @@ const FeedPage: React.FC<{ refreshTrigger?: number }> = ({ refreshTrigger }) => 
             await feedApi.addComment(item, newComment);
             
             if (!currentUser.isGuest) {
-                 // New Trigger for Mission Progress
-                 userApi.triggerMissionUpdate('comment_added');
+                 await updateAllMissionProgress(currentUser.id);
             }
         });
     };
     
-    const handleDeleteRequest = (itemId: string | number) => { /* ... */ };
-    const handleConfirmDelete = async () => { /* ... */ };
+    const handleDeleteRequest = (itemId: string | number) => {
+        setPostToDelete(itemId);
+        setDeleteModalOpen(true);
+    };
+    
+    const handleConfirmDelete = async () => {
+        if (!postToDelete || !currentUser) return;
+        try {
+            await feedApi.deletePost(String(postToDelete));
+            setFeedItems(prev => prev.filter(item => item.id !== postToDelete));
+            await addNotificationToUser(String(currentUser.id), '您的貼文已成功刪除。', '系統通知');
+        } catch (error) {
+            console.error("Failed to delete post:", error);
+            alert("刪除失敗，請稍後再試。");
+        } finally {
+            setPostToDelete(null);
+            setDeleteModalOpen(false);
+        }
+    };
+    
     const handleManualRefresh = () => { setIsRefreshing(true); setRefreshKey(prev => prev + 1); };
-    const handleTouchStart = (e: React.TouchEvent) => { if (window.scrollY === 0) setTouchStart(e.touches[0].clientY); };
-    const handleTouchMove = (e: React.TouchEvent) => { /* ... */ };
-    const handleTouchEnd = () => { /* ... */ };
+    
+    const handleTouchStart = (e: React.TouchEvent) => {
+        if (window.scrollY === 0) {
+            setTouchStart(e.touches[0].clientY);
+        }
+    };
+    
+    const handleTouchMove = (e: React.TouchEvent) => {
+        const pullDist = e.touches[0].clientY - touchStart;
+        if (pullDist > 0 && touchStart > 0) {
+            e.preventDefault();
+            const dampenedPull = Math.pow(pullDist, 0.7);
+            setPullDistance(dampenedPull);
+        }
+    };
+    
+    const handleTouchEnd = () => {
+        setTouchStart(0);
+        if (pullDistance > 80) {
+            setIsRefreshing(true);
+            setRefreshKey(prev => prev + 1);
+        } else {
+            setPullDistance(0);
+        }
+    };
 
     if (loading && !isRefreshing && feedItems.length === 0) return <div className="text-center p-10 text-brand-accent">載入動態中...</div>;
 
     return (
         <div className="space-y-6 relative min-h-[calc(100vh-150px)]" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+             <div className={`fixed top-16 left-0 right-0 h-12 flex justify-center items-center transition-opacity duration-300 ${isRefreshing && pullDistance > 0 ? 'opacity-100' : 'opacity-0'}`} style={{ transform: `translateY(${Math.min(pullDistance, 50) - 50}px)` }}>
+                <ArrowPathIcon className="w-6 h-6 text-brand-accent animate-spin" />
+            </div>
             <div className="transition-transform duration-200 ease-out" style={{ transform: `translateY(${pullDistance}px)` }}>
                 {feedItems.length > 0 ? (
                     <div className="space-y-4 pb-20 pt-2">

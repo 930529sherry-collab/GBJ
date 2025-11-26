@@ -1,14 +1,11 @@
-
-
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
 import { auth } from '../firebase/config';
-// @-fix: Replaced modular 'signOut' import with compat syntax.
 
 const LogoutPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const navigate = useNavigate();
 
-  // Check if the current user is a guest
   const isGuest = (() => {
     const profileData = localStorage.getItem('userProfile');
     if (profileData) {
@@ -19,27 +16,18 @@ const LogoutPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   })();
 
   const handleLogout = async () => {
-    if (auth) {
-        try {
-            // @-fix: Switched to compat syntax for signing out.
-            await auth.signOut();
-            console.log("Signed out from Firebase");
-        } catch (error) {
-            console.error("Error signing out from Firebase", error);
-        }
+    try {
+        await signOut(auth);
+        console.log("Signed out from Firebase");
+    } catch (error) {
+        console.error("Error signing out from Firebase", error);
     }
     
-    // Clear app session state
     localStorage.removeItem('isAuthenticated');
-    // We deliberately don't clear 'userProfile' immediately to allow for 
-    // caching behavior on re-login, but `onLogout` in App.tsx should handle state reset.
-    
     onLogout();
   };
 
   useEffect(() => {
-    // If user is a guest, auto-logout immediately without confirmation
-    // This creates a seamless transition to the Login/Register page
     if (isGuest) {
         handleLogout();
     }
@@ -49,7 +37,6 @@ const LogoutPage: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     navigate('/profile');
   };
 
-  // If it's a guest, return null to render nothing while redirecting
   if (isGuest) return null;
 
   return (

@@ -1,9 +1,9 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Mission, Notification } from '../types';
 import { userApi, updateUserProfile, addNotificationToUser } from '../utils/api';
 import { auth, db } from '../firebase/config';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { CheckCircleIcon, StarIcon, CalendarIcon, ListBulletIcon } from '../components/icons/NavIcons';
 import { SparklesIcon, XIcon } from '../components/icons/ActionIcons';
 
@@ -50,11 +50,11 @@ const MissionsPage: React.FC = () => {
         const fetchUserAndCheckReset = async () => {
             if (auth.currentUser) {
                 try {
-                    // Mission sync is now handled by backend triggers.
-                    const userRef = db.collection('users').doc(auth.currentUser.uid);
-                    unsubscribe = userRef.onSnapshot((doc) => { 
-                        if (doc.exists) {
-                            setUser(doc.data() as UserProfile);
+                    // V9 Syntax: onSnapshot(doc(db, 'users', uid), callback)
+                    const userRef = doc(db, 'users', auth.currentUser.uid);
+                    unsubscribe = onSnapshot(userRef, (docSnap) => { 
+                        if (docSnap.exists()) {
+                            setUser(docSnap.data() as UserProfile);
                         }
                         setLoading(false);
                     });

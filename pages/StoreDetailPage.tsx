@@ -1,11 +1,10 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MOCK_STORES, MOCK_ORDERS } from '../constants';
 import { Store, Order, UserProfile, Review } from '../types';
 import StoreDetail from '../components/StoreDetail';
 import { useGuestGuard } from '../context/GuestGuardContext';
-import { getStores, addNotificationToUser, userApi } from '../utils/api';
+import { getStores, addNotificationToUser, userApi, addReview, updateAllMissionProgress } from '../utils/api';
 
 const ReservationModal: React.FC<{
     store: Store | null;
@@ -16,16 +15,21 @@ const ReservationModal: React.FC<{
     const [date, setDate] = useState('');
     const [time, setTime] = useState('19:00');
     const [people, setPeople] = useState(2);
-    const today = new Date().toISOString().split('T')[0];
+    
+    const tomorrow = useMemo(() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().split('T')[0];
+    }, []);
     
     useEffect(() => { 
         if (isOpen) { 
-            setDate(today); 
+            setDate(tomorrow); 
             setTime('19:00'); 
             setPeople(2); 
             setStep('form'); 
         } 
-    }, [isOpen, today]);
+    }, [isOpen, tomorrow]);
 
     const handleConfirm = () => {
         if (!store) return;
@@ -73,7 +77,7 @@ const ReservationModal: React.FC<{
                         <div className="space-y-4">
                             <div>
                                 <label htmlFor="date" className="block text-sm font-medium text-brand-light mb-1">預約日期</label>
-                                <input type="date" id="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-2 text-brand-light focus:ring-brand-accent focus:border-brand-accent" />
+                                <input type="date" id="date" value={date} min={tomorrow} onChange={(e) => setDate(e.target.value)} className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-2 text-brand-light focus:ring-brand-accent focus:border-brand-accent" />
                             </div>
                             <div>
                                 <label htmlFor="time" className="block text-sm font-medium text-brand-light mb-1">預計到達時間</label>
@@ -122,27 +126,12 @@ const StoreDetailPage: React.FC = () => {
             if (profile) setCurrentUser(JSON.parse(profile));
 
             try {
-                // Fetch stores from API ensuring we get the latest data including Firestore ones
                 const allStores = await getStores();
-                
-                // Find store matching the ID. 
-                // Store.id can be string or number, id param is string. Use string comparison.
                 const foundStore = allStores.find(s => String(s.id) === id);
-                
-                if (foundStore) {
-                    setStore(foundStore);
-                } else {
-                    // Fallback: Check localStorage if not found in API result (e.g. offline or legacy)
-                    const savedStores = localStorage.getItem('stores');
-                    const fallbackStores: Store[] = savedStores ? JSON.parse(savedStores) : MOCK_STORES;
-                    const foundLocal = fallbackStores.find(s => String(s.id) === id);
-                    setStore(foundLocal || null);
-                }
+                setStore(foundStore || null);
             } catch (error) {
                 console.error("Error loading store details:", error);
-                // Final Fallback to MOCK_STORES on error
-                const foundMock = MOCK_STORES.find(s => String(s.id) === id);
-                setStore(foundMock || null);
+                setStore(null);
             } finally {
                 setLoading(false);
             }
@@ -155,25 +144,23 @@ const StoreDetailPage: React.FC = () => {
         }
     }, [id]);
     
-    const handleUpdateReviews = (newReview: Review) => {
-        if (!store) return;
+    const handleUpdateReviews = async (newReview: Review) => {
+        if (!store || !currentUser) return;
 
         const updatedReviews = [newReview, ...store.reviews];
         const updatedStore = { ...store, reviews: updatedReviews };
 
         setStore(updatedStore);
 
-        // Ideally we should update Firestore here too, but for now keep local sync
-        const savedStoresString = localStorage.getItem('stores');
-        const allStores: Store[] = savedStoresString ? JSON.parse(savedStoresString) : MOCK_STORES;
-        // Compare using String to handle mixed types
-        const updatedAllStores = allStores.map(s => String(s.id) === String(store.id) ? updatedStore : s);
-        
-        localStorage.setItem('stores', JSON.stringify(updatedAllStores));
-
-        // New Trigger for Mission Progress
-        if (currentUser && !currentUser.isGuest) {
-            userApi.triggerMissionUpdate('review_added');
+        try {
+            await addReview(String(store.id), newReview);
+            if (!currentUser.isGuest) {
+                await updateAllMissionProgress(currentUser.id);
+            }
+        } catch (error) {
+            console.error("Failed to add review:", error);
+            // Optionally revert UI change
+            setStore(store);
         }
     };
 

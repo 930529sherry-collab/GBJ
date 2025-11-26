@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MOCK_STORES, MOCK_ORDERS } from '../constants';
 import { Store, Order, UserProfile, Review } from '../types';
@@ -16,16 +16,21 @@ const ReservationModal: React.FC<{
     const [date, setDate] = useState('');
     const [time, setTime] = useState('19:00');
     const [people, setPeople] = useState(2);
-    const today = new Date().toISOString().split('T')[0];
+    
+    const tomorrow = useMemo(() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().split('T')[0];
+    }, []);
     
     useEffect(() => { 
         if (isOpen) { 
-            setDate(today); 
+            setDate(tomorrow); 
             setTime('19:00'); 
             setPeople(2); 
             setStep('form'); 
         } 
-    }, [isOpen, today]);
+    }, [isOpen, tomorrow]);
 
     const handleConfirm = () => {
         if (!store) return;
@@ -73,7 +78,7 @@ const ReservationModal: React.FC<{
                         <div className="space-y-4">
                             <div>
                                 <label htmlFor="date" className="block text-sm font-medium text-brand-light mb-1">預約日期</label>
-                                <input type="date" id="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-2 text-brand-light focus:ring-brand-accent focus:border-brand-accent" />
+                                <input type="date" id="date" value={date} min={tomorrow} onChange={(e) => setDate(e.target.value)} className="w-full bg-brand-primary border border-brand-accent/50 rounded-md p-2 text-brand-light focus:ring-brand-accent focus:border-brand-accent" />
                             </div>
                             <div>
                                 <label htmlFor="time" className="block text-sm font-medium text-brand-light mb-1">預計到達時間</label>
@@ -156,10 +161,6 @@ const StoreDetailPage: React.FC = () => {
         const updatedStore = { ...store, reviews: updatedReviews };
 
         setStore(updatedStore);
-
-        // Since we are not using localStorage for stores anymore, this local update is just for UI.
-        // The review addition to backend is handled in StoreDetail component via onUpdateReviews calling addReview (if implemented there) or we should call API here.
-        // For now, just UI update is fine as the user requested removing localStorage fallback for reading.
         
         // New Trigger for Mission Progress
         if (currentUser && !currentUser.isGuest) {

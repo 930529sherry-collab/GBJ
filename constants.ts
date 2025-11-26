@@ -1,4 +1,5 @@
 
+
 import { Store, Deal, Mission, UserProfile, FeedItem, Order, RedeemItem, Coupon, MockUser } from './types';
 
 // Helper function to format date as YYYY-MM-DD
@@ -68,7 +69,6 @@ export const addDays = (date: Date, days: number): Date => {
 export const MOCK_STORES: Store[] = [
   { 
     id: 1, name: 'Indulge Experimental Bistro', type: '實驗性餐酒館', distance: '1.0 公里', rating: 4.8, 
-    // Image: Detailed cocktail with botanical elements (Tea/Nature theme)
     imageUrl: 'https://images.unsplash.com/photo-1599950755346-a3e58f84ca63?auto=format&fit=crop&w=800&q=80', 
     position: { top: '9.9%', left: '74.8%' }, availability: 'Available',
     address: '台北市大安區復興南路一段219巷11號',
@@ -85,7 +85,6 @@ export const MOCK_STORES: Store[] = [
   },
   { 
     id: 2, name: 'AHA Saloon', type: '復古風格酒吧', distance: '1.2 公里', rating: 4.7, 
-    // Image: Warm, vintage interior with bottles (Retro vibe)
     imageUrl: 'https://images.unsplash.com/photo-1543007630-9710e4a00a20?auto=format&fit=crop&w=800&q=80', 
     position: { top: '10.5%', left: '73.2%' }, availability: 'Busy',
     address: '台北市大安區復興南路二段138號',
@@ -94,7 +93,6 @@ export const MOCK_STORES: Store[] = [
   },
   { 
     id: 3, name: 'Bar Mood', type: '摩登雞尾酒吧', distance: '1.5 公里', rating: 4.9, 
-    // Image: Sleek, high-end bar counter (Modern/Luxurious)
     imageUrl: 'https://images.unsplash.com/photo-1572116469696-958721b7d6ca?auto=format&fit=crop&w=800&q=80', 
     position: { top: '9.2%', left: '72.1%' }, availability: 'Full',
     address: '台北市大安區敦化南路一段160巷53號',
@@ -103,7 +101,6 @@ export const MOCK_STORES: Store[] = [
   },
   {
     id: 4, name: 'Room by Le Kief', type: '實驗性雞尾酒吧', distance: '1.8 公里', rating: 4.8, 
-    // Image: Moody, colorful drinks, dark background (Molecular/Experimental)
     imageUrl: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?auto=format&fit=crop&w=800&q=80', 
     position: { top: '8.5%', left: '75.5%' }, availability: 'Available',
     address: '台北市大安區復興南路一段107巷5弄10號',
@@ -112,7 +109,6 @@ export const MOCK_STORES: Store[] = [
   },
   {
     id: 5, name: 'Ounce Taipei', type: 'Speakeasy', distance: '2.0 公里', rating: 4.6, 
-    // Image: Bartender pouring drink in dark setting (Speakeasy atmosphere)
     imageUrl: 'https://images.unsplash.com/photo-1566417713204-380160966333?auto=format&fit=crop&w=800&q=80', 
     position: { top: '11.2%', left: '72.8%' }, availability: 'Busy',
     address: '台北市大安區信義路四段30巷5號',
@@ -121,7 +117,6 @@ export const MOCK_STORES: Store[] = [
   },
   {
     id: 6, name: 'CÉ LA VI Taipei', type: '高空景觀酒吧', distance: '3.5 公里', rating: 4.5, 
-    // Image: City skyline at night (Rooftop/View)
     imageUrl: 'https://images.unsplash.com/photo-1533106958151-53e1d78d0e16?auto=format&fit=crop&w=800&q=80', 
     position: { top: '7.8%', left: '76.8%' }, availability: 'Available',
     address: '台北市信義區松智路17號48樓',
@@ -141,38 +136,21 @@ export const MOCK_DEALS: Deal[] = [
     { id: 8, storeName: 'Bar Mood', title: '經典雞尾酒週', description: '本週限定，所有經典雞尾酒系列 (Old Fashioned, Negroni...) 享第二杯半價。', expiry: formatDate(addDays(today, 7)) },
 ];
 
-// FIX: Explicitly type MISSIONS_FOR_IMPORT to ensure 'type' property is '"daily" | "special"' and not 'string'.
-// This resolves a TypeScript error when creating INITIAL_MISSIONS and allows it to be exported for use in other files like ProfilePage.
-export const MISSIONS_FOR_IMPORT: Array<Omit<Mission, 'current' | 'status' | 'claimed'>> = [
-    // --- 每日任務 ---
-    { id: 'daily_check_in', title: '每日打卡', description: '發布一則動態即算打卡', xpReward: 50, type: 'daily', target: 1 },
-    { id: 'daily_chat', title: '每日聊天', description: '在聊天室發送一則訊息', xpReward: 30, type: 'daily', target: 1 },
-    { id: 'daily_night_owl', title: '夜貓子', description: '不醉不歸！在深夜時段（00:00 - 04:00）完成一次酒吧打卡，享受城市的寧靜。', xpReward: 80, type: 'daily', target: 1 },
-    { id: 'daily_weekend_warrior', title: '週末戰士', description: '工作辛苦了！在週六或週日前往酒吧打卡，放鬆一週的疲憊。', xpReward: 60, type: 'daily', target: 1 },
-    { id: 'daily_friday_fever', title: '週五狂熱夜', description: '在最期待的週五夜晚前往任何酒吧打卡，用一杯好酒迎接週末自由。', xpReward: 50, type: 'daily', target: 1 },
-    { id: 'daily_early_bird', title: '早鳥優惠', description: '懂得把握時間的聰明酒客！在傍晚 5 點到 7 點的 Happy Hour 黃金時段完成打卡。', xpReward: 50, type: 'daily', target: 1 },
-  
-    // --- 特殊任務 ---
-    { id: 'special_first_check_in', title: '初來乍到', description: '完成你的第一次酒吧打卡，為你的酒吧探險傳奇寫下精彩序幕。', xpReward: 100, pointsReward: 50, type: 'special', target: 1 },
-    { id: 'special_first_friend', title: '廣結善緣', description: '新增第一位好友', xpReward: 100, type: 'special', target: 1 },
-    { id: 'special_photo_post', title: '微醺留影', description: '用照片記錄歡樂瞬間！發布一則附帶照片的動態，讓大家看看你的微醺模樣。', xpReward: 50, type: 'special', target: 1 },
-    { id: 'special_reviewer', title: '評論家', description: '你的舌尖是社群米其林指南。為 3 間造訪過的酒吧留下星級評論與心得。', xpReward: 80, type: 'special', target: 3 },
-    { id: 'special_social_butterfly', title: '社交蝴蝶', description: '展現你的揪團魅力！一週內發布 5 篇與不同好友歡聚的動態，成為派對核心。', xpReward: 60, type: 'special', target: 5 },
-    { id: 'special_loyal_customer', title: '忠實顧客', description: '在同一間心愛酒吧累積打卡 5 次，讓調酒師都記得你，成為店家認證 VIP！', xpReward: 100, type: 'special', target: 5 },
-    { id: 'special_explorer', title: '探險家', description: '挑戰極限！在動態一晚內探訪 3 間不同風格酒吧並打卡，證明你是城市酒吧專家。', xpReward: 100, pointsReward: 20, type: 'special', target: 3 },
-    { id: 'special_popular', title: '人氣王', description: '你是社群焦點！發布的一則動態獲得 30 個讚，證明你的高人氣！', xpReward: 80, type: 'special', target: 30 },
-    { id: 'special_ultimate_explorer', title: '終極探險家', description: '城市霓虹都為你而亮！累積在 10 間完全不同的酒吧打卡，解鎖榮耀稱號。', xpReward: 150, pointsReward: 100, type: 'special', target: 10 },
-    { id: 'special_level_5', title: '明日之星', description: '達到等級 5', xpReward: 500, type: 'special', target: 5 },
+
+export const MOCK_MISSIONS: Mission[] = [
+    { id: 1, title: '探險家', description: '挑戰極限！在動態一晚內探訪 3 間不同風格酒吧並打卡，證明你是城市酒吧專家。', reward: { xp: 100, points: 20 }, progress: 0, goal: 3, type: 'daily' },
+    { id: 2, title: '夜貓子', description: '不醉不歸！在深夜時段（00:00 - 04:00）完成一次酒吧打卡，享受城市的寧靜。', reward: { xp: 80 }, progress: 0, goal: 1, type: 'daily' },
+    { id: 3, title: '微醺留影', description: '用照片記錄歡樂瞬間！發布一則附帶照片的動態，讓大家看看你的微醺模樣。', reward: { xp: 50 }, progress: 0, goal: 1, type: 'special' },
+    { id: 4, title: '初來乍到', description: '完成你的第一次酒吧打卡，為你的酒吧探險傳奇寫下精彩序幕。', reward: { xp: 100, points: 50 }, progress: 0, goal: 1, type: 'special' },
+    { id: 5, title: '忠實顧客', description: '在同一間心愛酒吧累積打卡 5 次，讓調酒師都記得你，成為店家認證 VIP！', reward: { xp: 100 }, progress: 0, goal: 5, type: 'special' },
+    { id: 6, title: '週末戰士', description: '工作辛苦了！在週六或週日前往酒吧打卡，放鬆一週的疲憊。', reward: { xp: 60 }, progress: 0, goal: 1, type: 'daily' },
+    { id: 7, title: '社交蝴蝶', description: '展現你的揪團魅力！一週內發布 5 篇與不同好友歡聚的動態，成為派對核心。', reward: { xp: 60 }, progress: 0, goal: 5, type: 'daily' },
+    { id: 8, title: '週五狂熱夜', description: '在最期待的週五夜晚前往任何酒吧打卡，用一杯好酒迎接週末自由。', reward: { xp: 50 }, progress: 0, goal: 1, type: 'daily' },
+    { id: 9, title: '評論家', description: '你的舌尖是社群米其林指南。為 3 間造訪過的酒吧留下星級評論與心得。', reward: { xp: 80 }, progress: 0, goal: 3, type: 'special' },
+    { id: 10, title: '人氣王', description: '你是社群焦點！發布的一則動態獲得 30 個讚，證明你的高人氣！', reward: { xp: 80 }, progress: 0, goal: 30, type: 'special' },
+    { id: 11, title: '早鳥優惠', description: '懂得把握時間的聰明酒客！在傍晚 5 點到 7 點的 Happy Hour 黃金時段完成打卡。', reward: { xp: 50 }, progress: 0, goal: 1, type: 'daily' },
+    { id: 12, title: '終極探險家', description: '城市霓虹都為你而亮！累積在 10 間完全不同的酒吧打卡，解鎖榮耀稱號。', reward: { xp: 150, points: 100 }, progress: 0, goal: 10, type: 'special' },
 ];
-
-// This is what a new user gets. It includes progress fields.
-export const INITIAL_MISSIONS: Mission[] = MISSIONS_FOR_IMPORT.map(mission => ({
-    ...mission,
-    current: 0,
-    status: 'ongoing',
-    claimed: false,
-}));
-
 
 export const MOCK_USER_PROFILE: UserProfile = {
   id: '101',
@@ -183,15 +161,15 @@ export const MOCK_USER_PROFILE: UserProfile = {
   xp: 120,
   xpToNextLevel: 300,
   points: 250,
-  missionsCompleted: 8,
   checkIns: 15,
   email: 'sherry@example.com',
   phone: '0987-654-321',
   friends: ['102', '103'],
-  friendCode: 'GUNBOOJO-SHERRY',
+  appId: 'GUNBOOJO-SHERRY',
   latlng: { lat: 25.0479, lng: 121.5318 },
-  missions: INITIAL_MISSIONS,
-} as UserProfile;
+  missionProgress: {},
+  completedMissionIds: [],
+};
 
 export const MOCK_USERS: MockUser[] = [
   { id: '101', email: 'sherry@example.com', password: 'password123', profile: MOCK_USER_PROFILE },
@@ -200,8 +178,8 @@ export const MOCK_USERS: MockUser[] = [
     email: 'brian@example.com',
     password: 'password123',
     profile: {
-      id: '102', name: '布萊恩', displayName: '布萊恩', avatarUrl: 'https://picsum.photos/200/200?random=102', level: 3, xp: 50, xpToNextLevel: 150,
-      points: 120, missionsCompleted: 4, checkIns: 8, friends: ['101'], friendCode: 'GUNBOOJO-BRIAN', latlng: { lat: 25.051, lng: 121.545 }, missions: INITIAL_MISSIONS,
+      id: '102', name: '布萊恩', displayName: '布萊恩', avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-1.2.1&auto=format&fit=crop&w=200&q=80', level: 3, xp: 50, xpToNextLevel: 150,
+      points: 120, checkIns: 8, friends: ['101'], appId: 'GUNBOOJO-BRIAN', latlng: { lat: 25.051, lng: 121.545 }, missionProgress: {}, completedMissionIds: [],
     } as UserProfile
   },
   {
@@ -209,8 +187,8 @@ export const MOCK_USERS: MockUser[] = [
     email: 'cathy@example.com',
     password: 'password123',
     profile: {
-      id: '103', name: '凱西', displayName: '凱西', avatarUrl: 'https://picsum.photos/200/200?random=103', level: 7, xp: 400, xpToNextLevel: 500,
-      points: 500, missionsCompleted: 12, checkIns: 22, friends: ['101'], friendCode: 'GUNBOOJO-CATHY', latlng: { lat: 25.033, lng: 121.565 }, missions: INITIAL_MISSIONS,
+      id: '103', name: '凱西', displayName: '凱西', avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=crop&w=200&q=80', level: 7, xp: 400, xpToNextLevel: 500,
+      points: 500, checkIns: 22, friends: ['101'], appId: 'GUNBOOJO-CATHY', latlng: { lat: 25.033, lng: 121.565 }, missionProgress: {}, completedMissionIds: [],
     } as UserProfile
   },
 ];

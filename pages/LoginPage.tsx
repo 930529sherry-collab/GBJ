@@ -1,15 +1,18 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    sendPasswordResetEmail,
+    updateProfile,
+    User
+} from 'firebase/auth';
+
 import { WELCOME_COUPONS, MOCK_USERS } from '../constants';
 import { UserProfile, Coupon } from '../types';
 import { auth } from '../firebase/config';
 import { BackIcon } from '../components/icons/ActionIcons';
 import { getUserProfile, createFallbackUserProfile, createUserProfileInDB } from '../utils/api';
-// @-fix: Remove modular imports and use compat syntax via the 'auth' object.
-// The User type is also available on the firebase namespace.
-import firebase from 'firebase/compat/app';
 
 const logoUrl = 'https://raw.githubusercontent.com/930529sherry-collab/gunboojo/56b3926c513c87c1cf6cbe82697e392cd03465e6/%E4%B9%BE%E4%B8%8D%E6%8F%AA%20%E5%BD%A9%E8%89%B2%E7%89%88.png';
 
@@ -68,7 +71,7 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
         setShowPasswordRequirements(false);
     }, [mode]);
 
-    const syncUserProfile = async (user: firebase.User, displayNameOverride?: string): Promise<UserProfile> => {
+    const syncUserProfile = async (user: User, displayNameOverride?: string): Promise<UserProfile> => {
         try {
             return await getUserProfile(user.uid);
         } catch (e: any) {
@@ -91,16 +94,15 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
             xp: 0,
             xpToNextLevel: 100,
             points: 0,
-            missionsCompleted: 0,
             checkIns: 0,
             friends: [],
             notifications: [],
-            missions: [],
+            missionProgress: {},
+            completedMissionIds: [],
             hasReceivedWelcomeGift: false,
             latlng: { lat: 25.04, lng: 121.53 },
             isGuest: true,
         };
-        localStorage.setItem('userCoupons', JSON.stringify(WELCOME_COUPONS));
         localStorage.setItem('userProfile', JSON.stringify(guestProfile));
         
         onLoginSuccess(guestProfile, true);
@@ -122,8 +124,7 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
         try {
             if (mode === 'login') {
                 try {
-                    // @-fix: Use compat syntax for sign-in.
-                    const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                    const userCredential = await signInWithEmailAndPassword(auth, email, password);
                     if (userCredential.user) {
                         const profile = await syncUserProfile(userCredential.user);
                         localStorage.setItem('userProfile', JSON.stringify(profile));
@@ -142,8 +143,6 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                 }
 
             } else if (mode === 'register') {
-                if (!auth) throw new Error("Firebase auth not initialized");
-                
                 if (!Object.values(passwordValidation).every(Boolean)) {
                     setError('密碼不符合安全要求。');
                     setShowPasswordRequirements(true);
@@ -156,17 +155,15 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                     return;
                 }
 
-                // @-fix: Use compat syntax for user creation.
-                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 if (userCredential.user) {
                     
                     const finalAvatarUrl = `https://picsum.photos/200?random=${userCredential.user.uid}`;
 
                     try {
-                        // @-fix: Use compat syntax for profile update.
-                        await userCredential.user.updateProfile({
+                        await updateProfile(userCredential.user, {
                             displayName: name,
-                            photoURL: finalAvatarUrl
+                            photoURL: finalAvatarUrl 
                         });
                     } catch (profileErr) {
                         console.warn("Auth profile update failed", profileErr);
@@ -195,11 +192,8 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                 }
 
             } else if (mode === 'forgot') {
-                 if (auth) {
-                    // @-fix: Use compat syntax for sending reset email.
-                    await auth.sendPasswordResetEmail(email);
-                    setResetEmailSent(true);
-                 }
+                await sendPasswordResetEmail(auth, email);
+                setResetEmailSent(true);
             }
         } catch (err: any) {
             if (err.code !== 'auth/invalid-credential' && err.code !== 'auth/user-not-found' && err.code !== 'auth/wrong-password') {
