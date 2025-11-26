@@ -124,8 +124,8 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
             }
         });
         
-        const requestsRef = collection(db, 'users', uid, 'friendRequests');
-        const q = query(requestsRef, where('status', '==', 'pending'));
+        const requestsRef = collection(db, 'friendRequests');
+        const q = query(requestsRef, where('recipientId', '==', uid), where('status', '==', 'pending'));
             
         const unSubRequests = onSnapshot(q, (snapshot) => {
             const hasPending = !snapshot.empty;

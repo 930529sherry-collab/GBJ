@@ -1,8 +1,4 @@
 
-
-
-
-
 export interface Review {
   id: number | string;
   authorId?: string | number;
@@ -103,6 +99,8 @@ export interface UserProfile {
   checkInHistory?: CheckInHistoryItem[];
   missionProgress?: { [key: number]: number };
   completedMissionIds?: number[];
+  // FIX: Add 'missions' property to support new mission structure.
+  missions?: (Mission & { claimed: boolean; status?: string })[];
   hasReceivedWelcomeNotifications?: boolean;
   dailyMissionLastReset?: string; // YYYY-MM-DD
   hasUnreadChats?: boolean;
@@ -217,6 +215,7 @@ export interface JournalEntry {
 export interface FriendRequest {
     id: string; 
     senderUid: string;
+    recipientId: string;
     senderName: string;
     senderAvatarUrl: string;
     status: 'pending' | 'accepted' | 'declined';

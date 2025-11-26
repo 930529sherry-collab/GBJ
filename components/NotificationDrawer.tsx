@@ -36,8 +36,8 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
         const uid = auth.currentUser.uid;
         fetchNotifications();
 
-        const requestsRef = collection(db, 'users', uid, 'friendRequests');
-        const q = query(requestsRef, where('status', '==', 'pending'));
+        const requestsRef = collection(db, 'friendRequests');
+        const q = query(requestsRef, where('recipientId', '==', uid), where('status', '==', 'pending'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const requests: FriendRequest[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
             setFriendRequests(requests);
@@ -63,10 +63,7 @@ const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, onClose
 
     useEffect(() => {
         if (groupedNotifications.length > 0 && !hasInteracted) {
-            const latestGroup = groupedNotifications[0].type;
-            if (!expandedGroups.includes(latestGroup)) {
-                setExpandedGroups([latestGroup]);
-            }
+            // No auto-expansion
         }
     }, [groupedNotifications, hasInteracted]);
     

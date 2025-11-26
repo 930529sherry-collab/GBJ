@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation, Link, Navigate, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -127,8 +126,8 @@ const AppLayout: React.FC<{ onLogout: () => void; currentUser: UserProfile | nul
         });
         
         // V9 Syntax: collection(db, ...), query(...), onSnapshot(...)
-        const requestsRef = collection(db, 'users', uid, 'friendRequests');
-        const q = query(requestsRef, where('status', '==', 'pending'));
+        const requestsRef = collection(db, 'friendRequests');
+        const q = query(requestsRef, where('recipientId', '==', uid), where('status', '==', 'pending'));
             
         const unSubRequests = onSnapshot(q, (snapshot) => {
             const hasPending = !snapshot.empty;

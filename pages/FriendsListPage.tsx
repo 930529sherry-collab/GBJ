@@ -38,8 +38,8 @@ const FriendsListPage: React.FC = () => {
         });
         
         // @-fix: Use modular Firestore syntax
-        const requestsRef = collection(db, 'users', uid, 'friendRequests');
-        const q = query(requestsRef, where('status', '==', 'pending'));
+        const requestsRef = collection(db, 'friendRequests');
+        const q = query(requestsRef, where('recipientId', '==', uid), where('status', '==', 'pending'));
         const unsubRequests = onSnapshot(q, (snapshot) => {
             const requests: FriendRequest[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
             setPendingRequests(requests);

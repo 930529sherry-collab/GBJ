@@ -33,8 +33,8 @@ const AddFriendPage: React.FC = () => {
         let unsubscribeRequests = () => {};
         if (auth.currentUser) {
             setLoadingRequests(true);
-            const requestsRef = collection(db, 'users', auth.currentUser.uid, 'friendRequests');
-            const q = query(requestsRef, where('status', '==', 'pending'));
+            const requestsRef = collection(db, 'friendRequests');
+            const q = query(requestsRef, where('recipientId', '==', auth.currentUser.uid), where('status', '==', 'pending'));
 
             unsubscribeRequests = onSnapshot(q, (snapshot) => {
                 const requests: FriendRequest[] = snapshot.docs.map(doc => ({

@@ -1,3 +1,4 @@
+
 import {
     doc,
     getDoc,
@@ -15,7 +16,8 @@ import {
     onSnapshot,
     writeBatch,
     increment,
-    arrayRemove
+    arrayRemove,
+    Timestamp,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -304,8 +306,24 @@ export const userApi = {
         };
         return callFunction('createPost', payload);
     },
-    sendFriendRequest: async (targetUid: string): Promise<void> => {
-        await callFunction('sendFriendRequest', { friendId: targetUid });
+    sendFriendRequest: async (targetUid: string | number): Promise<void> => {
+        const currentUser = auth.currentUser;
+        if (!currentUser) throw new Error("AUTH_REQUIRED");
+        try {
+            await callFunction('sendFriendRequest', { targetUid: String(targetUid) });
+        } catch (e) {
+            console.warn("sendFriendRequest function failed, falling back to client-side write", e);
+            const senderProfile = await getUserProfile(currentUser.uid);
+            const requestDoc = {
+                senderUid: currentUser.uid,
+                recipientId: String(targetUid), // Add recipientId for root collection query
+                senderName: senderProfile.displayName || senderProfile.name || '新用戶',
+                senderAvatarUrl: senderProfile.avatarUrl,
+                status: 'pending',
+                timestamp: Timestamp.now(),
+            };
+            await addDoc(collection(db, 'friendRequests'), requestDoc);
+        }
     },
     respondFriendRequest: async (requesterId: string, accept: boolean, requestId: string): Promise<void> => {
         await callFunction('respondFriendRequest', { requesterId, accept, requestId });
@@ -463,15 +481,17 @@ export const updateAllMissionProgress = async (userId: string | number): Promise
     try {
         const userProfile = await getUserProfile(uid);
         const { checkInHistory = [], friends = [], level = 1 } = userProfile;
+        const userMissions = userProfile.missions || [];
+
         const allStores = await getStores();
         const allFeedItems = await getUserFeed(uid);
-        const journalEntries = await journalApi.getJournalEntries(uid);
 
-        let missionProgress = userProfile.missionProgress || {};
+        const updatedMissions = MOCK_MISSIONS.map(sysMission => {
+            const userMission = userMissions.find(m => m.id === sysMission.id) || { ...sysMission, progress: 0, claimed: false };
+            if (userMission.claimed) return userMission;
 
-        MOCK_MISSIONS.forEach(mission => {
             let progress = 0;
-            switch(mission.id) {
+            switch(sysMission.id) {
                 case 1: { // Explorer
                     const checkInsByDate: { [key: string]: Set<string> } = {};
                     checkInHistory.forEach(c => {
@@ -522,10 +542,14 @@ export const updateAllMissionProgress = async (userId: string | number): Promise
                      break;
                 }
             }
-             missionProgress[mission.id] = Math.min(progress, mission.goal);
+             const newProgress = Math.max(userMission.progress, progress);
+             const newStatus = (newProgress >= sysMission.goal) ? 'completed' : 'ongoing';
+
+             return { ...userMission, ...sysMission, progress: newProgress, status: newStatus };
         });
         
-        await updateUserProfile(uid, { missionProgress });
+        // FIX: 'missionProgress' is not defined. The new mission structure is stored in 'updatedMissions' and should be saved to the 'missions' property.
+        await updateUserProfile(uid, { missions: updatedMissions });
 
     } catch (e) {
         console.error("Failed to update mission progress:", e);
