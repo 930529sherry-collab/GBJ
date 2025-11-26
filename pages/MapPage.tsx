@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import * as L from 'leaflet';
@@ -160,7 +161,7 @@ const MapPage: React.FC = () => {
                 },
             });
 
-            // FIX: Add robust handling for Gemini API response before parsing JSON.
+            // @google/genai-migration-fix: Add robust handling for Gemini API response before parsing JSON.
             const responseText = response.text;
             if (!responseText) {
                 throw new Error("AI response was empty.");

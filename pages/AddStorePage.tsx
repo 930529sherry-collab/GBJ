@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -77,7 +78,7 @@ const AddStorePage: React.FC = () => {
                     },
                 });
                 
-                // FIX: Add robust handling for Gemini API response before parsing JSON.
+                // @google/genai-migration-fix: Add robust handling for Gemini API response before parsing JSON.
                 const responseText = response.text;
                 if (!responseText) {
                     throw new Error("AI address validation response was empty.");
