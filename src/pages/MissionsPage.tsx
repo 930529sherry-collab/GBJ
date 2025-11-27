@@ -6,6 +6,7 @@ import { auth, db } from '../firebase/config';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { CheckCircleIcon, StarIcon, CalendarIcon, ListBulletIcon } from '../components/icons/NavIcons';
 import { SparklesIcon, XIcon } from '../components/icons/ActionIcons';
+import { INITIAL_MISSIONS } from '../constants'; // Corrected import
 
 type TabType = 'all' | 'daily' | 'special' | 'completed';
 
@@ -71,6 +72,28 @@ const MissionsPage: React.FC = () => {
         return () => unsubscribe();
     }, []);
 
+    // Also handle guest/mock view logic if needed, replacing MOCK_MISSIONS usage
+    useEffect(() => {
+        const calculateMissionProgress = async () => {
+            // This is largely handled by the onSnapshot listener for real users
+            // But for the initial state or guest fallback logic:
+            if (!auth.currentUser) {
+                const profileStr = localStorage.getItem('userProfile');
+                if (profileStr) {
+                    const userProfile: UserProfile = JSON.parse(profileStr);
+                    if (userProfile.id === '0') {
+                        // Guest mode: use INITIAL_MISSIONS
+                        const guestMissions = INITIAL_MISSIONS.map(m => ({...m, current: 0, status: 'ongoing', claimed: false}));
+                        // We set user state to a guest profile structure to render the UI
+                        setUser({ ...userProfile, missions: guestMissions } as UserProfile);
+                    }
+                }
+                setLoading(false);
+            }
+        };
+        if (!auth.currentUser) calculateMissionProgress();
+    }, []);
+
     const handleClaimReward = async (missionId: string) => {
         if (!user || isClaiming) return;
         setIsClaiming(missionId);
@@ -93,7 +116,7 @@ const MissionsPage: React.FC = () => {
             updatedUser.xpToNextLevel = Math.floor(updatedUser.xpToNextLevel * 1.2);
         }
 
-        const updatedMissions = updatedUser.missions.map(m => {
+        const updatedMissions = updatedUser.missions?.map(m => {
             if (m.id === missionId) {
                 // All missions are now permanently claimed, no more daily resets.
                 return { ...m, claimed: true };
@@ -104,7 +127,13 @@ const MissionsPage: React.FC = () => {
         updatedUser.missions = updatedMissions;
 
         try {
-            await updateUserProfile(String(user.id), updatedUser);
+            if (user.id !== '0') {
+                await updateUserProfile(String(user.id), updatedUser);
+            } else {
+                // Guest mode local update
+                localStorage.setItem('userProfile', JSON.stringify(updatedUser));
+                setUser(updatedUser);
+            }
             
             // Send notifications
             addNotificationToUser(String(user.id), `任務完成：「${missionToClaim.title}」！`, '任務通知');
@@ -206,11 +235,11 @@ const MissionsPage: React.FC = () => {
                                         {isCompleted && (
                                              <div className="mt-3">
                                                  <button
-                                                     onClick={() => handleClaimReward(mission.id)}
-                                                     disabled={isClaiming === mission.id}
+                                                     onClick={() => handleClaimReward(String(mission.id))}
+                                                     disabled={isClaiming === String(mission.id)}
                                                      className="w-full bg-brand-accent text-brand-primary font-bold py-2 rounded-lg hover:bg-opacity-80 transition-colors disabled:bg-brand-muted"
                                                  >
-                                                     {isClaiming === mission.id ? "領取中..." : "領取獎勵"}
+                                                     {isClaiming === String(mission.id) ? "領取中..." : "領取獎勵"}
                                                  </button>
                                              </div>
                                         )}

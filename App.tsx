@@ -330,20 +330,9 @@ const App: React.FC = () => {
                 handleLogout();
             }
         });
-
-        // Listen for profile updates from the API
-        const handleProfileUpdate = () => {
-            const savedProfile = localStorage.getItem('userProfile');
-            if (savedProfile) {
-                setCurrentUser(JSON.parse(savedProfile));
-            }
-        };
-        window.addEventListener('profileUpdated', handleProfileUpdate);
-
         return () => {
             clearTimeout(authTimeout);
             unsubscribe();
-            window.removeEventListener('profileUpdated', handleProfileUpdate);
         };
     }, []);
 

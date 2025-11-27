@@ -1,3 +1,4 @@
+
 import {
     doc,
     getDoc,
@@ -157,12 +158,15 @@ const initializeNewUserProfile = (firebaseUser: FirebaseUser, displayName: strin
         level: 1,
         xp: 0,
         xpToNextLevel: 100,
-        points: 0,
+        points: 50,
         checkIns: 0,
         latlng: { lat: 25.04, lng: 121.53 },
         friends: [],
         notifications: [],
         missions: [],
+        coupons: WELCOME_COUPONS,
+        hasReceivedWelcomeGift: true,
+        hasReceivedWelcomeNotifications: true,
     };
 };
 
@@ -187,19 +191,57 @@ export const updateUserProfile = async (uid: string, updates: Partial<UserProfil
 };
 
 export const grantWelcomePackage = async (userId: string): Promise<boolean> => {
-    return false;
+    const profile = await getUserProfile(userId);
+    if (profile.hasReceivedWelcomeGift) return false;
+    
+    const updates: Partial<UserProfile> = {
+        points: (profile.points || 0) + 50,
+        coupons: [...(profile.coupons || []), ...WELCOME_COUPONS],
+        hasReceivedWelcomeGift: true,
+    };
+    await updateUserProfile(userId, updates);
+    return true;
 };
 
 export const checkAndBackfillWelcomeNotifications = async (userId: string, profile: UserProfile): Promise<boolean> => {
-    return false;
+    if (profile.hasReceivedWelcomeNotifications) return false;
+
+    if (!profile.hasReceivedWelcomeGift) return false;
+    const notifications = profile.notifications || [];
+    let addedNotifs = false;
+
+    const hasPointsNotif = notifications.some(n => n.message.includes("50 酒幣"));
+    const hasCouponsNotif = notifications.some(n => n.message.includes("新客優惠券"));
+
+    const newNotifications: Notification[] = [];
+    if (!hasPointsNotif) {
+        newNotifications.push({ type: '系統通知', message: '歡迎加入！50 酒幣已發送至您的帳戶。', timestamp: new Date().toISOString(), read: false });
+        addedNotifs = true;
+    }
+    if (!hasCouponsNotif) {
+        newNotifications.push({ type: '系統通知', message: '3 張新客專屬優惠券已發送至您的帳戶。', timestamp: new Date().toISOString(), read: false });
+        addedNotifs = true;
+    }
+    
+    if (addedNotifs) {
+        await updateUserProfile(userId, { 
+            notifications: [...notifications, ...newNotifications],
+            hasReceivedWelcomeNotifications: true
+        });
+    } else if (!profile.hasReceivedWelcomeNotifications) {
+        await updateUserProfile(userId, { hasReceivedWelcomeNotifications: true });
+    }
+    return addedNotifs;
 };
 
 export const syncUserStats = async (userId: string): Promise<void> => {
     const userRef = doc(db, 'users', userId);
-    const friendsSnapshot = await getDocs(collection(userRef, 'Friendlist'));
-    const userProfile = await getUserProfile(userId);
+    // Use friendsList subcollection which is the standard
+    const friendsSnapshot = await getDocs(collection(userRef, 'friendsList'));
     
     const friends = friendsSnapshot.docs.map(d => d.id);
+    
+    const userProfile = await getUserProfile(userId);
     const checkIns = (userProfile.checkInHistory || []).length;
     
     await updateDoc(userRef, { friends, checkIns });
@@ -255,26 +297,54 @@ export const getDeals = async (): Promise<Deal[]> => {
 
 export const getFriends = async (userId: string): Promise<UserProfile[]> => {
     if (!userId) return [];
+    
+    console.log(`[API] 正在讀取好友: users/${userId}/friendsList`);
+
     try {
-        const friendsRef = collection(db, 'users', userId, 'Friendlist');
-        const snapshot = await getDocs(friendsRef);
-        if (!snapshot.empty) {
-            const friendIds = snapshot.docs.map(d => d.id);
-            const friendProfiles = await Promise.all(
-                friendIds.map(async (id) => {
-                    try {
-                        return await getUserProfile(id);
-                    } catch (err) {
-                        console.warn(`Failed to fetch friend profile for ${id}`, err);
-                        return null;
-                    }
-                })
-            );
-            return friendProfiles.filter(Boolean) as UserProfile[];
+        // 1. 確保路徑字串完全正確 (friendsList)
+        const snapshot = await getDocs(collection(db, 'users', userId, 'friendsList'));
+        
+        if (snapshot.empty) {
+            console.warn("[API] 好友子集合是空的");
+            return [];
         }
-        return [];
+
+        // 2. 轉換資料 (Mapping)
+        const friends: UserProfile[] = snapshot.docs.map(doc => {
+            const data = doc.data();
+            
+            // ★★★ 關鍵修正：欄位對應 ★★★
+            // 資料庫存的是 'name'，但前端介面需要 'displayName'
+            const finalName = data.name || data.displayName || "未知好友";
+            const finalAvatar = data.avatarUrl || "https://picsum.photos/200";
+
+            // 回傳符合 UserProfile 格式的物件
+            return {
+                id: doc.id, // 使用文件 ID 作為用戶 ID
+                
+                // 這裡把 'name' 塞給 'displayName'
+                displayName: finalName, 
+                displayName_lower: finalName.toLowerCase(),
+                
+                avatarUrl: finalAvatar,
+                
+                // 補上其他必要欄位，防止前端報錯
+                email: "",
+                appId: data.friendUid || "Unknown", // 雖然資料庫有 friendUid，但這裡當 appId 用也行
+                level: 1,
+                xp: 0,
+                checkIns: 0,
+                stats: {},
+                friends: [],
+                notifications: []
+            } as unknown as UserProfile;
+        });
+
+        console.log(`[API] 成功讀取 ${friends.length} 位好友:`, friends);
+        return friends;
+
     } catch (e) {
-        console.error("Error fetching friends:", e);
+        console.error("[API] 讀取好友失敗:", e);
         return [];
     }
 };
@@ -302,13 +372,17 @@ export const userApi = {
         const currentUser = auth.currentUser;
         if (!currentUser) throw new Error("AUTH_REQUIRED");
         try {
-            await callFunction('sendFriendRequest', { targetUid: String(targetUid) });
+            await callFunction('sendFriendRequest', { friendId: String(targetUid) });
         } catch (e) {
             console.warn("sendFriendRequest function failed, falling back to client-side write", e);
             const senderProfile = await getUserProfile(currentUser.uid);
             const requestDoc = {
                 senderUid: currentUser.uid,
-                recipientId: String(targetUid), // Add recipientId for root collection query
+                recipientId: String(targetUid),
+                // Add fields required by backend/frontend
+                fromUid: currentUser.uid,
+                from: senderProfile.displayName || senderProfile.name || '新用戶',
+                
                 senderName: senderProfile.displayName || senderProfile.name || '新用戶',
                 senderAvatarUrl: senderProfile.avatarUrl,
                 status: 'pending',
@@ -318,13 +392,35 @@ export const userApi = {
         }
     },
     respondFriendRequest: async (requesterId: string, accept: boolean, requestId: string): Promise<void> => {
+        // Use requesterId as key to match previous revert
         await callFunction('respondFriendRequest', { requesterId, accept, requestId });
     },
     sendNotification: (targetUid: string, message: string, type: string) => {
         return callFunction('sendNotification', { targetUid, message, type });
     },
-    triggerMissionUpdate: (type: string, data: any = {}) => {
-        return callFunction('triggerMissionProgress', { type, data });
+    triggerMissionUpdate: async (type: string, data: any = {}) => {
+        try {
+            return await callFunction('triggerMissionProgress', { type, data });
+        } catch (e) {
+            console.warn("Cloud function triggerMissionProgress failed, attempting local update", e);
+            const uid = auth.currentUser?.uid;
+            if (!uid) return;
+            
+            try {
+                const profile = await getUserProfile(uid);
+                let missions = profile.missions || [];
+                
+                if (type === 'chat_sent') {
+                    // Locally update daily_chat
+                    missions = missions.map(m => m.id === 'daily_chat' ? { ...m, current: 1, status: 'completed' } : m);
+                    await updateUserProfile(uid, { missions });
+                    console.log("Locally updated daily_chat mission");
+                }
+                // We can add logic for other triggers if necessary
+            } catch (localErr) {
+                console.error("Local mission update failed", localErr);
+            }
+        }
     },
     claimMissionReward: (data: { missionId: string }): Promise<{ success: boolean; leveledUp?: boolean; newLevel?: number; message?: string; }> => {
         return callFunction('claimMissionReward', data);
@@ -478,6 +574,7 @@ export const updateAllMissionProgress = async (userId: string | number): Promise
         const allStores = await getStores();
         const allFeedItems = await getUserFeed(uid);
 
+        // Corrected: Use INITIAL_MISSIONS instead of undefined MOCK_MISSIONS
         const updatedMissions = INITIAL_MISSIONS.map(sysMission => {
             const userMission = userMissions.find(m => m.id === sysMission.id) || { ...sysMission, current: 0, status: 'ongoing', claimed: false };
             if (userMission.claimed) return userMission;
