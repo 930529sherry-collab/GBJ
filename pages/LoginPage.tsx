@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
-    sendPasswordResetEmail,
     updateProfile,
     User
 } from 'firebase/auth';
@@ -12,7 +11,7 @@ import { WELCOME_COUPONS, MOCK_USERS } from '../constants';
 import { UserProfile, Coupon } from '../types';
 import { auth } from '../firebase/config';
 import { BackIcon } from '../components/icons/ActionIcons';
-import { getUserProfile, createFallbackUserProfile, createUserProfileInDB } from '../utils/api';
+import { getUserProfile, createFallbackUserProfile, createUserProfileInDB, userApi } from '../utils/api';
 
 const logoUrl = 'https://raw.githubusercontent.com/930529sherry-collab/gunboojo/56b3926c513c87c1cf6cbe82697e392cd03465e6/%E4%B9%BE%E4%B8%8D%E6%8F%AA%20%E5%BD%A9%E8%89%B2%E7%89%88.png';
 
@@ -192,7 +191,7 @@ const LoginPage: React.FC<{ onLoginSuccess: (userProfile: UserProfile, requiresO
                 }
 
             } else if (mode === 'forgot') {
-                await sendPasswordResetEmail(auth, email);
+                await userApi.sendPasswordResetEmail(email);
                 setResetEmailSent(true);
             }
         } catch (err: any) {

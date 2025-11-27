@@ -1,4 +1,3 @@
-
 import {
     doc,
     getDoc,
@@ -21,7 +20,7 @@ import {
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { User as FirebaseUser } from 'firebase/auth';
+import { User as FirebaseUser, sendPasswordResetEmail, updateProfile } from 'firebase/auth';
 
 import { db, functions, storage, auth } from '../firebase/config';
 import { UserProfile, SearchableUser, FeedItem, Comment, Notification, Store, Order, JournalEntry, FriendRequest, Deal, Mission, Review, CheckInHistoryItem } from '../types';
@@ -202,13 +201,18 @@ export const checkAndBackfillWelcomeNotifications = async (userId: string, profi
 export const syncUserStats = async (userId: string): Promise<void> => {
     const userRef = doc(db, 'users', userId);
     const friendsSnapshot = await getDocs(collection(userRef, 'Friendlist'));
-    
-    const friends = friendsSnapshot.docs.map(d => d.id);
-    
     const userProfile = await getUserProfile(userId);
+
+    const friends = friendsSnapshot.docs.map(d => d.id);
     const checkIns = (userProfile.checkInHistory || []).length;
-    
-    await updateDoc(userRef, { friends, checkIns });
+
+    const updates = { friends, checkIns };
+    await updateDoc(userRef, updates);
+
+    // Update localStorage and notify the app
+    const updatedProfile = { ...userProfile, ...updates };
+    localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+    window.dispatchEvent(new CustomEvent('profileUpdated'));
 };
 
 // ============================================================================
@@ -217,7 +221,7 @@ export const syncUserStats = async (userId: string): Promise<void> => {
 
 export const getStores = async (): Promise<Store[]> => {
     try {
-        const snapshot = await getDocs(collection(db, 'stores'));
+        const snapshot = await getDocs(collection(db, "stores"));
         
         if (snapshot.empty) {
             console.warn("Firestore 'stores' collection is empty.");
@@ -316,7 +320,7 @@ export const userApi = {
             const senderProfile = await getUserProfile(currentUser.uid);
             const requestDoc = {
                 senderUid: currentUser.uid,
-                recipientId: String(targetUid), // Add recipientId for root collection query
+                recipientId: String(targetUid),
                 senderName: senderProfile.displayName || senderProfile.name || '新用戶',
                 senderAvatarUrl: senderProfile.avatarUrl,
                 status: 'pending',
@@ -336,6 +340,16 @@ export const userApi = {
     },
     claimMissionReward: (data: { missionId: string }): Promise<{ success: boolean; leveledUp?: boolean; newLevel?: number; message?: string; }> => {
         return callFunction('claimMissionReward', data);
+    },
+    sendPasswordResetEmail: async (email: string): Promise<void> => {
+        if (!auth) throw new Error("Firebase Auth not initialized.");
+        if (!email) throw new Error("Email is required.");
+        try {
+            await sendPasswordResetEmail(auth, email);
+        } catch (error) {
+            console.error("Failed to send password reset email:", error);
+            throw error;
+        }
     },
 };
 
@@ -398,6 +412,24 @@ export const chatApi = {
         return callFunction('markChatsAsRead', { userId: String(userId) });
     },
 };
+
+export const adminApi = {
+    importMissions: async (): Promise<void> => {
+        const user = auth.currentUser;
+        if (!user) {
+            alert("Please log in to import missions.");
+            return;
+        }
+        try {
+            await updateUserProfile(user.uid, { missions: MOCK_MISSIONS.map(m => ({...m, progress: 0, claimed: false})) });
+            alert("Missions imported successfully!");
+        } catch (error) {
+            console.error("Failed to import missions:", error);
+            alert("Failed to import missions.");
+        }
+    },
+};
+
 
 // ============================================================================
 // 6. Data Fetching & Subscriptions
@@ -473,7 +505,6 @@ export const addReview = async (storeId: string, review: Review) => {
 };
 
 
-// @google/genai-migration-fix: Refactor `updateAllMissionProgress` to use `INITIAL_MISSIONS` and the new mission structure, fixing the `MOCK_MISSIONS is not defined` error and aligning with the rest of the application's refactored mission system.
 export const updateAllMissionProgress = async (userId: string | number): Promise<void> => {
     const uid = String(userId);
     if (!uid || uid === '0') return;
@@ -548,7 +579,6 @@ export const updateAllMissionProgress = async (userId: string | number): Promise
              return { ...userMission, ...sysMission, progress: newProgress, status: newStatus };
         });
         
-        // FIX: 'missionProgress' is not defined. The new mission structure is stored in 'updatedMissions' and should be saved to the 'missions' property.
         await updateUserProfile(uid, { missions: updatedMissions });
 
     } catch (e) {
